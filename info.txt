@@ -1,0 +1,720 @@
+================================================================================
+                    DIRECT-MAPPED CACHE MEMORY - DETAILED DOCUMENTATION
+                              For Lab Record / Viva Preparation
+================================================================================
+
+================================================================================
+1. INTRODUCTION TO CACHE MEMORY
+================================================================================
+
+What is Cache Memory?
+---------------------
+Cache memory is a small, high-speed memory located between the CPU and main 
+memory (RAM). It stores frequently accessed data and instructions to reduce 
+the average time required to access data from the main memory.
+
+Why is Cache Memory Used?
+-------------------------
+1. SPEED GAP: CPUs operate at GHz frequencies while DRAM operates at MHz 
+   frequencies. This creates a significant speed mismatch.
+
+2. LOCALITY OF REFERENCE: Programs tend to access the same data repeatedly 
+   (temporal locality) and access data near recently accessed data (spatial 
+   locality). Cache exploits these patterns.
+
+3. PERFORMANCE: A well-designed cache can reduce average memory access time 
+   from ~100 cycles (DRAM) to ~1-2 cycles (cache hit).
+
+Memory Hierarchy:
+-----------------
+    CPU Registers (fastest, smallest)
+         ↓
+    L1 Cache (very fast, small)
+         ↓
+    L2 Cache (fast, medium)
+         ↓
+    L3 Cache (moderate, larger)
+         ↓
+    Main Memory/RAM (slow, large)
+         ↓
+    Disk/SSD (slowest, largest)
+
+================================================================================
+2. DIRECT-MAPPED CACHE CONCEPT
+================================================================================
+
+What is Direct-Mapped Cache?
+----------------------------
+In a direct-mapped cache, each memory address maps to EXACTLY ONE cache line.
+The mapping is determined by the INDEX portion of the address.
+
+Advantages:
+- Simple hardware implementation
+- Fast lookup (only one location to check)
+- Lower power consumption
+
+Disadvantages:
+- Conflict misses: Two addresses with the same index cannot coexist
+- Lower hit rate compared to set-associative caches
+
+How Direct Mapping Works:
+-------------------------
+Given an address, the INDEX bits determine which cache line to use.
+Multiple memory addresses can map to the same cache line, but only one
+can be stored at a time.
+
+Example: With 4 cache lines (index = 2 bits)
+- Address 0x12 → index = 0 (maps to line 0)
+- Address 0x52 → index = 0 (also maps to line 0) → CONFLICT!
+- Address 0x24 → index = 1 (maps to line 1)
+- Address 0x38 → index = 2 (maps to line 2)
+
+================================================================================
+3. ADDRESS BREAKDOWN FOR THIS DESIGN
+================================================================================
+
+Design Parameters:
+------------------
+- Address Width: 8 bits (256 byte-addressable memory locations)
+- Cache Lines: 4
+- Block Size: 4 bytes per line
+- Total Cache Size: 4 lines × 4 bytes = 16 bytes
+
+Address Decomposition:
+----------------------
+For an 8-bit address: addr[7:0]
+
+    +--------+--------+--------+
+    | TAG    | INDEX  | OFFSET |
+    +--------+--------+--------+
+    | [7:4]  | [3:2]  | [1:0]  |
+    | 4 bits | 2 bits | 2 bits |
+    +--------+--------+--------+
+
+TAG (addr[7:4]) - 4 bits:
+- Identifies which memory block is stored in the cache line
+- Used to verify if the cached data matches the requested address
+- 4 bits → 16 possible tags
+
+INDEX (addr[3:2]) - 2 bits:
+- Selects which of the 4 cache lines to access
+- 2 bits → 4 cache lines (0, 1, 2, 3)
+- Calculated as: (address / block_size) % num_lines
+
+OFFSET (addr[1:0]) - 2 bits:
+- Selects which byte within the 4-byte block
+- 2 bits → 4 byte positions (0, 1, 2, 3)
+
+Example Address Breakdown:
+--------------------------
+Address 0x52 = 0101_0010 in binary
+
+    Binary:    0101   01    10
+    Field:     TAG   INDEX  OFFSET
+    Value:      5      1      2
+
+    - TAG = 5 (0101)
+    - INDEX = 1 (01) → Use cache line 1
+    - OFFSET = 2 (10) → Return byte 2 from the block
+
+Block Alignment:
+----------------
+The block base address is calculated by clearing the offset bits:
+    block_base = {addr[7:2], 2'b00}
+    
+For addr = 0x52: block_base = 0x50
+For addr = 0x13: block_base = 0x10
+
+================================================================================
+4. CACHE LINE STRUCTURE
+================================================================================
+
+Each cache line contains:
+-------------------------
+
+    +-------+-------------+--------------------------------+
+    | VALID |     TAG     |           DATA BLOCK           |
+    +-------+-------------+--------------------------------+
+    | 1 bit |   4 bits    |           32 bits              |
+    +-------+-------------+--------------------------------+
+                          |  B3  |  B2  |  B1  |  B0  |
+                          | [31:24] | [23:16] | [15:8] | [7:0] |
+
+VALID Bit (1 bit):
+- Indicates if the cache line contains valid data
+- 0 = Invalid (empty or stale data)
+- 1 = Valid (contains valid cached data)
+- Reset clears all valid bits to 0
+
+TAG Array (4 bits per line):
+- Stores the tag portion of the cached address
+- Used for hit/miss detection
+- Compared with incoming address tag
+
+DATA Block (32 bits = 4 bytes per line):
+- Stores 4 consecutive bytes from memory
+- Organized as: {byte3, byte2, byte1, byte0}
+- Offset selects which byte to return
+
+Cache Arrays in Verilog:
+------------------------
+    reg        valid_arr[0:3];    // 4 valid bits
+    reg [3:0]  tag_arr[0:3];      // 4 tags, 4 bits each
+    reg [31:0] data_arr[0:3];     // 4 data blocks, 32 bits each
+
+================================================================================
+5. HIT DETECTION
+================================================================================
+
+A cache HIT occurs when:
+------------------------
+1. The cache line is VALID (valid_arr[index] == 1)
+   AND
+2. The TAG matches (tag_arr[index] == addr_tag)
+
+Verilog Implementation:
+-----------------------
+    wire cache_hit;
+    assign cache_hit = valid_arr[index] && (tag_arr[index] == tag);
+
+A cache MISS occurs when:
+-------------------------
+- Either the valid bit is 0, OR
+- The tag doesn't match
+
+================================================================================
+6. READ HIT PATH (Step-by-Step)
+================================================================================
+
+When a READ request arrives and it's a HIT:
+
+Step 1: Address arrives (req_addr = 0x13)
+        - Decompose: tag=1, index=0, offset=3
+
+Step 2: Check cache line 0
+        - valid_arr[0] = 1? YES
+        - tag_arr[0] == 1? YES
+        - RESULT: HIT!
+
+Step 3: Extract requested byte
+        - data_arr[0] contains 4 bytes
+        - offset = 3 → select bits [31:24]
+        - Return data_arr[0][31:24]
+
+Step 4: Update statistics
+        - hit_count++
+        - Set hit = 1
+        - Set resp_valid = 1
+
+Timing: 1 clock cycle (immediate response)
+
+================================================================================
+7. READ MISS PATH (Step-by-Step)
+================================================================================
+
+When a READ request arrives and it's a MISS:
+
+Step 1: Address arrives (req_addr = 0x52)
+        - Decompose: tag=5, index=0, offset=2
+
+Step 2: Check cache line 0
+        - valid_arr[0] = 1? YES
+        - tag_arr[0] == 5? NO (was 1)
+        - RESULT: MISS!
+
+Step 3: Calculate block base address
+        - block_base = 0x50 (clear offset bits)
+
+Step 4: REFILL - Read 4 bytes from main memory
+        FSM State MISS_RD0: Request byte at 0x50
+        FSM State MISS_RD1: Capture byte 0, request byte at 0x51
+        FSM State MISS_RD2: Capture byte 1, request byte at 0x52
+        FSM State MISS_RD3: Capture byte 2, request byte at 0x53
+        FSM State RESP:     Capture byte 3, complete refill
+
+Step 5: Update cache line
+        - data_arr[0] = {byte3, byte2, byte1, byte0}
+        - tag_arr[0] = 5
+        - valid_arr[0] = 1
+
+Step 6: Return requested byte
+        - offset = 2 → return byte2
+        - Set resp_valid = 1
+        - Set hit = 0
+
+Step 7: Update statistics
+        - miss_count++
+
+Timing: 6 clock cycles (due to memory latency and 4 byte reads)
+
+================================================================================
+8. WRITE HIT PATH (Write-Through)
+================================================================================
+
+Write-Through Policy:
+---------------------
+When writing, data is written to BOTH the cache AND main memory simultaneously.
+This ensures consistency between cache and main memory at all times.
+
+Advantages:
+- Simple to implement
+- No dirty bits needed
+- Memory always has latest data
+
+Disadvantages:
+- More memory traffic
+- Slower writes (must wait for memory)
+
+When a WRITE request arrives and it's a HIT:
+
+Step 1: Address arrives (req_addr = 0x24, req_wdata = 0xAA)
+        - Decompose: tag=2, index=1, offset=0
+
+Step 2: Check cache line 1
+        - valid_arr[1] = 1? YES
+        - tag_arr[1] == 2? YES
+        - RESULT: HIT!
+
+Step 3: Update cache
+        - Modify byte at offset 0 in data_arr[1]
+        - data_arr[1][7:0] = 0xAA
+
+Step 4: Write-through to memory
+        - Set mem_we = 1
+        - Set mem_addr = 0x24
+        - Set mem_wdata = 0xAA
+
+Step 5: Complete
+        - Set resp_valid = 1
+        - Set hit = 1
+        - hit_count++
+
+Timing: 2 clock cycles
+
+================================================================================
+9. WRITE MISS PATH (No-Write-Allocate)
+================================================================================
+
+No-Write-Allocate Policy:
+-------------------------
+On a write miss, the data is written ONLY to main memory.
+The cache line is NOT filled with the new data.
+
+Why use No-Write-Allocate?
+- Simpler implementation
+- Avoids unnecessary memory reads
+- Good for write-once data patterns
+
+When a WRITE request arrives and it's a MISS:
+
+Step 1: Address arrives (req_addr = 0x88, req_wdata = 0xBB)
+        - Decompose: tag=8, index=2, offset=0
+
+Step 2: Check cache line 2
+        - valid_arr[2] = 0? (assume empty) → MISS!
+        - Or tag doesn't match → MISS!
+
+Step 3: Write directly to memory (NO cache update)
+        - Set mem_we = 1
+        - Set mem_addr = 0x88
+        - Set mem_wdata = 0xBB
+        - Cache remains unchanged!
+
+Step 4: Complete
+        - Set resp_valid = 1
+        - Set hit = 0
+        - miss_count++
+
+Timing: 2 clock cycles
+
+Note: A subsequent READ to 0x88 will also MISS because the cache
+was not allocated. This read will trigger a refill and bring
+the data into cache.
+
+================================================================================
+10. FSM STATES AND TRANSITIONS
+================================================================================
+
+State Encoding:
+---------------
+    IDLE      = 0  : Waiting for request, handle hits immediately
+    MISS_RD0  = 1  : Request byte 0 from memory
+    MISS_RD1  = 2  : Capture byte 0, request byte 1
+    MISS_RD2  = 3  : Capture byte 1, request byte 2
+    MISS_RD3  = 4  : Capture byte 2, request byte 3
+    RESP      = 5  : Capture byte 3, update cache, respond
+    WRITE_MEM = 6  : Perform write-through to memory
+
+State Transition Diagram:
+-------------------------
+
+                    ┌──────────────────────┐
+                    │        IDLE          │◄──────────────────┐
+                    │  (Wait for request)  │                   │
+                    └──────────┬───────────┘                   │
+                               │                               │
+            ┌──────────────────┼──────────────────┐            │
+            │ req_valid &&     │ req_valid &&     │            │
+            │ !req_rw &&       │ req_rw           │            │
+            │ !cache_hit       │ (any write)      │            │
+            ▼                  ▼                  │            │
+    ┌───────────────┐  ┌───────────────┐         │            │
+    │   MISS_RD0    │  │   WRITE_MEM   │─────────┼────────────┤
+    │ (Req byte 0)  │  │ (Write-thru)  │         │            │
+    └───────┬───────┘  └───────────────┘         │            │
+            │                                     │            │
+            ▼                                     │            │
+    ┌───────────────┐                            │            │
+    │   MISS_RD1    │                            │            │
+    │ (Req byte 1)  │                            │            │
+    └───────┬───────┘                            │            │
+            │                                     │            │
+            ▼                                     │            │
+    ┌───────────────┐                            │            │
+    │   MISS_RD2    │                            │            │
+    │ (Req byte 2)  │                            │            │
+    └───────┬───────┘                            │            │
+            │                                     │            │
+            ▼                                     │            │
+    ┌───────────────┐                            │            │
+    │   MISS_RD3    │                            │            │
+    │ (Req byte 3)  │                            │            │
+    └───────┬───────┘                            │            │
+            │                                     │            │
+            ▼                                     │            │
+    ┌───────────────┐                            │            │
+    │     RESP      │────────────────────────────┘            │
+    │ (Update cache)│                                         │
+    └───────────────┘                                         │
+            │                                                  │
+            └──────────────────────────────────────────────────┘
+
+What Each State Does:
+---------------------
+
+IDLE:
+- Accepts new requests
+- Performs tag comparison
+- READ HIT: Responds immediately (1 cycle)
+- READ MISS: Transitions to MISS_RD0
+- WRITE (hit or miss): Transitions to WRITE_MEM
+
+MISS_RD0:
+- Memory address set to block_base + 0
+- Waiting for memory read latency
+
+MISS_RD1:
+- Captures mem_rdata into refill_byte0
+- Memory address set to block_base + 1
+
+MISS_RD2:
+- Captures mem_rdata into refill_byte1
+- Memory address set to block_base + 2
+
+MISS_RD3:
+- Captures mem_rdata into refill_byte2
+- Memory address set to block_base + 3
+
+RESP:
+- Captures mem_rdata into refill_byte3
+- Assembles 32-bit block: {byte3, byte2, byte1, byte0}
+- Updates cache arrays (data, tag, valid)
+- Returns requested byte based on offset
+- Sets resp_valid = 1
+
+WRITE_MEM:
+- Asserts mem_we = 1
+- Writes req_wdata to mem_addr
+- If hit, cache was already updated in IDLE
+- Sets resp_valid = 1
+
+================================================================================
+11. BYTE STORAGE IN 32-BIT BLOCK
+================================================================================
+
+Block Organization:
+-------------------
+The 32-bit data block stores 4 bytes in little-endian order:
+
+    data_arr[index] = { byte3,   byte2,   byte1,   byte0  }
+                      [31:24]  [23:16]  [15:8]   [7:0]
+
+Memory Layout Example:
+----------------------
+If block base address is 0x10, the memory contains:
+    mem[0x10] = 0x10 → stored in byte0 → bits [7:0]
+    mem[0x11] = 0x11 → stored in byte1 → bits [15:8]
+    mem[0x12] = 0x12 → stored in byte2 → bits [23:16]
+    mem[0x13] = 0x13 → stored in byte3 → bits [31:24]
+
+    data_arr = 32'h13_12_11_10
+
+Offset Selection:
+-----------------
+    offset = 0 (addr[1:0] = 00) → return bits [7:0]   = byte0
+    offset = 1 (addr[1:0] = 01) → return bits [15:8]  = byte1
+    offset = 2 (addr[1:0] = 10) → return bits [23:16] = byte2
+    offset = 3 (addr[1:0] = 11) → return bits [31:24] = byte3
+
+Verilog Implementation:
+-----------------------
+    // Get byte from block
+    case (offset)
+        2'b00: byte_out = data_arr[index][7:0];
+        2'b01: byte_out = data_arr[index][15:8];
+        2'b10: byte_out = data_arr[index][23:16];
+        2'b11: byte_out = data_arr[index][31:24];
+    endcase
+
+    // Set byte in block
+    case (offset)
+        2'b00: data_arr[index][7:0]   = byte_in;
+        2'b01: data_arr[index][15:8]  = byte_in;
+        2'b10: data_arr[index][23:16] = byte_in;
+        2'b11: data_arr[index][31:24] = byte_in;
+    endcase
+
+================================================================================
+12. LIMITATIONS OF THIS MVP DESIGN
+================================================================================
+
+1. Single Outstanding Request:
+   - Only one request can be processed at a time
+   - No pipelining or request queuing
+   - Testbench must wait for resp_valid before next request
+
+2. No Replacement Policy Needed:
+   - Direct-mapped = each address has exactly one location
+   - No choice in what to evict (forced replacement)
+   - Set-associative caches need LRU, FIFO, etc.
+
+3. No Dirty Bit:
+   - Write-through means memory is always up-to-date
+   - Write-back caches need dirty bits to track modified lines
+   - Simplifies design but increases memory traffic
+
+4. No Write Buffering:
+   - Writes wait for memory to complete
+   - Write buffers could hide memory latency
+   - Current design is simpler but slower for writes
+
+5. Fixed Block Size:
+   - 4 bytes per block is small
+   - Real caches typically use 32-64 bytes
+   - Larger blocks exploit spatial locality better
+
+6. No Prefetching:
+   - Only fetches data on demand
+   - Prefetching could improve hit rate
+   - Would add complexity
+
+7. Fixed Memory Latency:
+   - Assumes 1-cycle memory read latency
+   - Real systems have variable latency
+   - No handling for wait states
+
+8. No Multi-Core Support:
+   - No cache coherency protocol
+   - Single CPU/single cache design
+   - MESI, MOESI protocols needed for multi-core
+
+================================================================================
+13. HOW TO RUN SIMULATION
+================================================================================
+
+Prerequisites:
+--------------
+- Icarus Verilog (iverilog) installed
+- GTKWave (optional, for waveform viewing)
+
+Installing Icarus Verilog on Windows:
+-------------------------------------
+1. Download from: http://bleyer.org/icarus/
+2. IMPORTANT: Install to a path WITHOUT SPACES!
+   - WRONG: C:\Program Files\iverilog  (contains spaces - will NOT work!)
+   - CORRECT: C:\iverilog
+3. During installation, check "Add executable folder to PATH"
+4. Restart your terminal/PowerShell after installation
+5. Verify installation: iverilog -v
+
+Using Makefile:
+---------------
+    # Compile and run
+    make run
+    
+    # Clean generated files
+    make clean
+    
+    # View waveforms (requires GTKWave)
+    make wave
+
+Manual Commands:
+----------------
+    # Step 1: Compile all Verilog files
+    iverilog -g2012 -o sim tb/tb_cache.v rtl/top.v rtl/cache_direct_mapped.v rtl/main_memory.v
+
+    # Step 2: Run simulation
+    vvp sim
+
+    # Step 3: View waveforms (optional)
+    gtkwave cache_sim.vcd
+
+File Structure:
+---------------
+    ADLD_EL/
+    ├── rtl/
+    │   ├── main_memory.v         # 256x8 byte-addressable memory
+    │   ├── cache_direct_mapped.v # Cache controller with FSM
+    │   └── top.v                 # Top-level interconnect
+    ├── tb/
+    │   └── tb_cache.v            # Self-checking testbench
+    ├── info.txt                  # This documentation file
+    └── Makefile                  # Build automation
+
+================================================================================
+14. EXPECTED CONSOLE OUTPUT
+================================================================================
+
+When you run the simulation, you should see output similar to:
+
+------------------------------------------------------------
+============================================================
+Direct-Mapped Cache Testbench
+============================================================
+
+--- Initial State After Reset ---
+Hit Count: 0, Miss Count: 0
+
+============================================================
+TEST A: Compulsory Miss then Hit (Same Block)
+============================================================
+
+A.1: Read 0x12 - Expect MISS (compulsory)
+[READ]  Addr=0x12, Data=0x12, Hit=0, Time=...
+
+A.2: Read 0x13 - Expect HIT (same block as 0x12)
+[READ]  Addr=0x13, Data=0x13, Hit=1, Time=...
+
+A.3: Read 0x10 - Expect HIT (same block)
+[READ]  Addr=0x10, Data=0x10, Hit=1, Time=...
+
+A.4: Read 0x11 - Expect HIT (same block)
+[READ]  Addr=0x11, Data=0x11, Hit=1, Time=...
+
+After Test A - Hit Count: 3, Miss Count: 1
+
+============================================================
+TEST B: Conflict Miss (Same Index, Different Tag)
+============================================================
+... (conflict misses demonstrated)
+
+============================================================
+TEST C: Write-Through Hit
+============================================================
+... (write-through behavior verified)
+
+============================================================
+TEST D: Write Miss (No-Write-Allocate)
+============================================================
+... (no-write-allocate behavior verified)
+
+============================================================
+FINAL RESULTS
+============================================================
+Total Hit Count:  X
+Total Miss Count: Y
+Hit Rate: Z%
+------------------------------------------------------------
+*** ALL TESTS PASSED ***
+============================================================
+Simulation Complete at time ...
+============================================================
+------------------------------------------------------------
+
+Key Observations:
+-----------------
+1. First access to any block is ALWAYS a miss (compulsory miss)
+2. Subsequent accesses to same block are hits (spatial locality)
+3. Accessing different tag with same index causes conflict miss
+4. Write-through updates both cache and memory
+5. Write miss doesn't allocate cache line (verified by subsequent read miss)
+
+================================================================================
+15. SIGNAL INTERFACE SUMMARY
+================================================================================
+
+CPU-Side Interface:
+-------------------
+    Input:
+        clk         : System clock
+        rst         : Synchronous reset (active high)
+        req_valid   : Request valid signal
+        req_rw      : 0=Read, 1=Write
+        req_addr    : 8-bit address
+        req_wdata   : 8-bit write data
+    
+    Output:
+        resp_valid  : Response valid (transaction complete)
+        resp_rdata  : 8-bit read data
+        hit         : 1=Cache hit, 0=Cache miss
+        ready       : 1=Ready to accept request
+        hit_count   : 32-bit hit counter
+        miss_count  : 32-bit miss counter
+
+Memory-Side Interface:
+----------------------
+    Output (to memory):
+        mem_we      : Memory write enable
+        mem_addr    : 8-bit memory address
+        mem_wdata   : 8-bit memory write data
+    
+    Input (from memory):
+        mem_rdata   : 8-bit memory read data
+
+Handshake Protocol:
+-------------------
+    1. Wait for ready = 1
+    2. Assert req_valid = 1 with req_addr, req_rw, req_wdata
+    3. Deassert req_valid on next clock
+    4. Wait for resp_valid = 1
+    5. Capture resp_rdata and hit
+    6. Transaction complete
+
+================================================================================
+16. GLOSSARY OF TERMS
+================================================================================
+
+Block/Line: A unit of data transfer between cache and memory. In this design,
+            each block contains 4 bytes.
+
+Cache Hit: When requested data is found in the cache. Fast access path.
+
+Cache Miss: When requested data is NOT in the cache. Requires memory access.
+
+Compulsory Miss: First access to a block is always a miss (cold start miss).
+
+Conflict Miss: Miss caused by two addresses mapping to the same cache line
+               (only possible in direct-mapped or set-associative caches).
+
+Direct-Mapped: Cache organization where each memory address maps to exactly
+               one cache location based on the index bits.
+
+Index: Address bits that select which cache line to access.
+
+No-Write-Allocate: Policy where write misses don't load data into cache.
+
+Offset: Address bits that select which byte within a cache block.
+
+Tag: Address bits stored in cache to identify which memory block is cached.
+
+Valid Bit: Flag indicating whether a cache line contains valid data.
+
+Write-Allocate: Policy where write misses cause a block to be loaded first.
+
+Write-Back: Policy where writes only update cache; memory updated on eviction.
+
+Write-Through: Policy where writes update both cache and memory immediately.
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
