@@ -1,6 +1,6 @@
 ================================================================================
-                    DIRECT-MAPPED CACHE MEMORY - DETAILED DOCUMENTATION
-                              For Lab Record / Viva Preparation
+              SINGLE-LEVEL CACHE MEMORY SYSTEM - DETAILED DOCUMENTATION
+                     For Lab Record / Viva Preparation (EL-1)
 ================================================================================
 
 ================================================================================
@@ -9,711 +9,830 @@
 
 What is Cache Memory?
 ---------------------
-Cache memory is a small, high-speed memory located between the CPU and main 
-memory (RAM). It stores frequently accessed data and instructions to reduce 
-the average time required to access data from the main memory.
+Cache memory is a small, high-speed memory positioned between the CPU and main
+memory (RAM). It stores copies of frequently accessed data to reduce the average
+time required to access data from main memory.
 
-Why is Cache Memory Used?
--------------------------
-1. SPEED GAP: CPUs operate at GHz frequencies while DRAM operates at MHz 
-   frequencies. This creates a significant speed mismatch.
+Why is Cache Memory Needed?
+---------------------------
+The "Memory Wall" problem: CPU speeds have increased much faster than memory
+speeds. A modern CPU can execute billions of instructions per second, but
+fetching data from RAM takes 100+ CPU cycles.
 
-2. LOCALITY OF REFERENCE: Programs tend to access the same data repeatedly 
-   (temporal locality) and access data near recently accessed data (spatial 
-   locality). Cache exploits these patterns.
+Performance Impact:
+- Without cache: CPU waits ~100 cycles for each memory access
+- With cache hit: CPU waits ~1-2 cycles
+- Hit rate of 95% → Average access time ≈ 6 cycles (massive improvement!)
 
-3. PERFORMANCE: A well-designed cache can reduce average memory access time 
-   from ~100 cycles (DRAM) to ~1-2 cycles (cache hit).
-
-Memory Hierarchy:
------------------
-    CPU Registers (fastest, smallest)
-         ↓
-    L1 Cache (very fast, small)
-         ↓
-    L2 Cache (fast, medium)
-         ↓
-    L3 Cache (moderate, larger)
-         ↓
-    Main Memory/RAM (slow, large)
-         ↓
-    Disk/SSD (slowest, largest)
+Locality of Reference:
+- TEMPORAL LOCALITY: If data is accessed, it will likely be accessed again soon
+  Example: Loop counter, function return address
+  
+- SPATIAL LOCALITY: If data at address X is accessed, data at X+1, X+2... 
+  will likely be accessed soon
+  Example: Array traversal, instruction fetch
 
 ================================================================================
-2. DIRECT-MAPPED CACHE CONCEPT
+2. CACHE ORGANIZATION TYPES
 ================================================================================
 
-What is Direct-Mapped Cache?
-----------------------------
-In a direct-mapped cache, each memory address maps to EXACTLY ONE cache line.
-The mapping is determined by the INDEX portion of the address.
+This project implements TWO cache organizations:
+
+2.1 Direct-Mapped Cache
+-----------------------
+Each memory address maps to EXACTLY ONE cache line (set).
+
+Mapping: Set = (Address / Block_Size) mod Number_of_Sets
+
+Example: Address 0x124 with 32 sets, 32-byte blocks
+         Set = (0x124 / 32) mod 32 = 9 mod 32 = 9
 
 Advantages:
-- Simple hardware implementation
-- Fast lookup (only one location to check)
-- Lower power consumption
+- Simplest hardware implementation
+- Fastest lookup (only one location to check)
+- Lowest power consumption
 
 Disadvantages:
-- Conflict misses: Two addresses with the same index cannot coexist
-- Lower hit rate compared to set-associative caches
+- CONFLICT MISSES: If two frequently accessed addresses map to the same
+  set, they keep evicting each other (thrashing)
 
-How Direct Mapping Works:
--------------------------
-Given an address, the INDEX bits determine which cache line to use.
-Multiple memory addresses can map to the same cache line, but only one
-can be stored at a time.
+2.2 2-Way Set-Associative Cache
+-------------------------------
+Each memory address can be stored in ONE OF TWO locations (ways).
 
-Example: With 4 cache lines (index = 2 bits)
-- Address 0x12 → index = 0 (maps to line 0)
-- Address 0x52 → index = 0 (also maps to line 0) → CONFLICT!
-- Address 0x24 → index = 1 (maps to line 1)
-- Address 0x38 → index = 2 (maps to line 2)
+Mapping: Set = (Address / Block_Size) mod Number_of_Sets
+         Way = Either 0 or 1 (determined by LRU on miss)
+
+Example: Address 0x124 with 16 sets, 32-byte blocks
+         Set = (0x124 / 32) mod 16 = 9 mod 16 = 9
+         Can be in Way 0 or Way 1 of Set 9
+
+Advantages:
+- Reduces conflict misses significantly
+- Better hit rate than direct-mapped
+
+Disadvantages:
+- More complex hardware (must check 2 tags in parallel)
+- Needs replacement policy (LRU)
+- Higher power consumption
 
 ================================================================================
-3. ADDRESS BREAKDOWN FOR THIS DESIGN
+3. CACHE PARAMETERS (THIS DESIGN)
 ================================================================================
 
-Design Parameters:
+Common Parameters:
 ------------------
-- Address Width: 8 bits (256 byte-addressable memory locations)
-- Cache Lines: 4
-- Block Size: 4 bytes per line
-- Total Cache Size: 4 lines × 4 bytes = 16 bytes
+┌───────────────────────────────────────┐
+│ Parameter          │ Value            │
+├───────────────────────────────────────┤
+│ Address Width      │ 32 bits          │
+│ Cache Size         │ 1 KB (1024 bytes)│
+│ Block Size         │ 32 bytes         │
+│ Block Bits         │ 256 bits         │
+│ Words per Block    │ 8 (32-bit words) │
+│ Offset Bits        │ 5 (log2(32))     │
+│ CPU Data Width     │ 32 bits          │
+└───────────────────────────────────────┘
 
-Address Decomposition:
-----------------------
-For an 8-bit address: addr[7:0]
-
-    +--------+--------+--------+
-    | TAG    | INDEX  | OFFSET |
-    +--------+--------+--------+
-    | [7:4]  | [3:2]  | [1:0]  |
-    | 4 bits | 2 bits | 2 bits |
-    +--------+--------+--------+
-
-TAG (addr[7:4]) - 4 bits:
-- Identifies which memory block is stored in the cache line
-- Used to verify if the cached data matches the requested address
-- 4 bits → 16 possible tags
-
-INDEX (addr[3:2]) - 2 bits:
-- Selects which of the 4 cache lines to access
-- 2 bits → 4 cache lines (0, 1, 2, 3)
-- Calculated as: (address / block_size) % num_lines
-
-OFFSET (addr[1:0]) - 2 bits:
-- Selects which byte within the 4-byte block
-- 2 bits → 4 byte positions (0, 1, 2, 3)
-
-Example Address Breakdown:
---------------------------
-Address 0x52 = 0101_0010 in binary
-
-    Binary:    0101   01    10
-    Field:     TAG   INDEX  OFFSET
-    Value:      5      1      2
-
-    - TAG = 5 (0101)
-    - INDEX = 1 (01) → Use cache line 1
-    - OFFSET = 2 (10) → Return byte 2 from the block
-
-Block Alignment:
-----------------
-The block base address is calculated by clearing the offset bits:
-    block_base = {addr[7:2], 2'b00}
-    
-For addr = 0x52: block_base = 0x50
-For addr = 0x13: block_base = 0x10
-
-================================================================================
-4. CACHE LINE STRUCTURE
-================================================================================
-
-Each cache line contains:
--------------------------
-
-    +-------+-------------+--------------------------------+
-    | VALID |     TAG     |           DATA BLOCK           |
-    +-------+-------------+--------------------------------+
-    | 1 bit |   4 bits    |           32 bits              |
-    +-------+-------------+--------------------------------+
-                          |  B3  |  B2  |  B1  |  B0  |
-                          | [31:24] | [23:16] | [15:8] | [7:0] |
-
-VALID Bit (1 bit):
-- Indicates if the cache line contains valid data
-- 0 = Invalid (empty or stale data)
-- 1 = Valid (contains valid cached data)
-- Reset clears all valid bits to 0
-
-TAG Array (4 bits per line):
-- Stores the tag portion of the cached address
-- Used for hit/miss detection
-- Compared with incoming address tag
-
-DATA Block (32 bits = 4 bytes per line):
-- Stores 4 consecutive bytes from memory
-- Organized as: {byte3, byte2, byte1, byte0}
-- Offset selects which byte to return
-
-Cache Arrays in Verilog:
-------------------------
-    reg        valid_arr[0:3];    // 4 valid bits
-    reg [3:0]  tag_arr[0:3];      // 4 tags, 4 bits each
-    reg [31:0] data_arr[0:3];     // 4 data blocks, 32 bits each
-
-================================================================================
-5. HIT DETECTION
-================================================================================
-
-A cache HIT occurs when:
-------------------------
-1. The cache line is VALID (valid_arr[index] == 1)
-   AND
-2. The TAG matches (tag_arr[index] == addr_tag)
-
-Verilog Implementation:
+Direct-Mapped Specific:
 -----------------------
-    wire cache_hit;
-    assign cache_hit = valid_arr[index] && (tag_arr[index] == tag);
+┌───────────────────────────────────────┐
+│ Parameter          │ Value            │
+├───────────────────────────────────────┤
+│ Number of Sets     │ 32               │
+│ Index Bits         │ 5 (log2(32))     │
+│ Tag Bits           │ 22 (32-5-5)      │
+└───────────────────────────────────────┘
 
-A cache MISS occurs when:
--------------------------
-- Either the valid bit is 0, OR
-- The tag doesn't match
-
-================================================================================
-6. READ HIT PATH (Step-by-Step)
-================================================================================
-
-When a READ request arrives and it's a HIT:
-
-Step 1: Address arrives (req_addr = 0x13)
-        - Decompose: tag=1, index=0, offset=3
-
-Step 2: Check cache line 0
-        - valid_arr[0] = 1? YES
-        - tag_arr[0] == 1? YES
-        - RESULT: HIT!
-
-Step 3: Extract requested byte
-        - data_arr[0] contains 4 bytes
-        - offset = 3 → select bits [31:24]
-        - Return data_arr[0][31:24]
-
-Step 4: Update statistics
-        - hit_count++
-        - Set hit = 1
-        - Set resp_valid = 1
-
-Timing: 1 clock cycle (immediate response)
+2-Way Set-Associative Specific:
+-------------------------------
+┌───────────────────────────────────────┐
+│ Parameter          │ Value            │
+├───────────────────────────────────────┤
+│ Number of Sets     │ 16               │
+│ Ways per Set       │ 2                │
+│ Index Bits         │ 4 (log2(16))     │
+│ Tag Bits           │ 23 (32-4-5)      │
+│ LRU Bits           │ 1 per set        │
+└───────────────────────────────────────┘
 
 ================================================================================
-7. READ MISS PATH (Step-by-Step)
+4. ADDRESS BREAKDOWN (DETAILED)
 ================================================================================
 
-When a READ request arrives and it's a MISS:
+4.1 Direct-Mapped Address Format
+--------------------------------
 
-Step 1: Address arrives (req_addr = 0x52)
-        - Decompose: tag=5, index=0, offset=2
+32-bit Address: addr[31:0]
 
-Step 2: Check cache line 0
-        - valid_arr[0] = 1? YES
-        - tag_arr[0] == 5? NO (was 1)
-        - RESULT: MISS!
+    ┌────────────────────┬─────────┬─────────┐
+    │        TAG         │  INDEX  │ OFFSET  │
+    │     addr[31:10]    │addr[9:5]│addr[4:0]│
+    │      22 bits       │ 5 bits  │ 5 bits  │
+    └────────────────────┴─────────┴─────────┘
 
-Step 3: Calculate block base address
-        - block_base = 0x50 (clear offset bits)
+TAG (22 bits): Stored in cache to identify which memory block is cached
+INDEX (5 bits): Selects which of the 32 sets to access
+OFFSET (5 bits): Selects which byte within the 32-byte block
 
-Step 4: REFILL - Read 4 bytes from main memory
-        FSM State MISS_RD0: Request byte at 0x50
-        FSM State MISS_RD1: Capture byte 0, request byte at 0x51
-        FSM State MISS_RD2: Capture byte 1, request byte at 0x52
-        FSM State MISS_RD3: Capture byte 2, request byte at 0x53
-        FSM State RESP:     Capture byte 3, complete refill
+Calculation Example:
+Address = 0x0000_04A8
 
-Step 5: Update cache line
-        - data_arr[0] = {byte3, byte2, byte1, byte0}
-        - tag_arr[0] = 5
-        - valid_arr[0] = 1
+Binary: 0000_0000_0000_0000_0000_0100_1010_1000
 
-Step 6: Return requested byte
-        - offset = 2 → return byte2
-        - Set resp_valid = 1
-        - Set hit = 0
+Tag    = addr[31:10] = 0000_0000_0000_0000_0000_01 = 0x000001
+Index  = addr[9:5]   = 00101 = 5
+Offset = addr[4:0]   = 01000 = 8
 
-Step 7: Update statistics
-        - miss_count++
+This means:
+- Look in Set 5
+- Compare tag with 0x000001
+- If match, return byte at offset 8 in the block
 
-Timing: 6 clock cycles (due to memory latency and 4 byte reads)
+4.2 2-Way Set-Associative Address Format
+----------------------------------------
 
-================================================================================
-8. WRITE HIT PATH (Write-Through)
-================================================================================
+32-bit Address: addr[31:0]
 
-Write-Through Policy:
----------------------
-When writing, data is written to BOTH the cache AND main memory simultaneously.
-This ensures consistency between cache and main memory at all times.
+    ┌─────────────────────┬─────────┬─────────┐
+    │         TAG         │  INDEX  │ OFFSET  │
+    │     addr[31:9]      │addr[8:5]│addr[4:0]│
+    │       23 bits       │ 4 bits  │ 5 bits  │
+    └─────────────────────┴─────────┴─────────┘
 
-Advantages:
-- Simple to implement
-- No dirty bits needed
-- Memory always has latest data
+TAG (23 bits): Stored in cache to identify which memory block is cached
+INDEX (4 bits): Selects which of the 16 sets to access
+OFFSET (5 bits): Selects which byte within the 32-byte block
 
-Disadvantages:
-- More memory traffic
-- Slower writes (must wait for memory)
+Calculation Example:
+Address = 0x0000_04A8
 
-When a WRITE request arrives and it's a HIT:
+Tag    = addr[31:9]  = 0x000002 (different because index is smaller)
+Index  = addr[8:5]   = 0101 = 5
+Offset = addr[4:0]   = 01000 = 8
 
-Step 1: Address arrives (req_addr = 0x24, req_wdata = 0xAA)
-        - Decompose: tag=2, index=1, offset=0
-
-Step 2: Check cache line 1
-        - valid_arr[1] = 1? YES
-        - tag_arr[1] == 2? YES
-        - RESULT: HIT!
-
-Step 3: Update cache
-        - Modify byte at offset 0 in data_arr[1]
-        - data_arr[1][7:0] = 0xAA
-
-Step 4: Write-through to memory
-        - Set mem_we = 1
-        - Set mem_addr = 0x24
-        - Set mem_wdata = 0xAA
-
-Step 5: Complete
-        - Set resp_valid = 1
-        - Set hit = 1
-        - hit_count++
-
-Timing: 2 clock cycles
+This means:
+- Look in Set 5
+- Compare tag with 0x000002 in BOTH Way 0 and Way 1
+- If either matches, it's a hit
 
 ================================================================================
-9. WRITE MISS PATH (No-Write-Allocate)
+5. CACHE LINE STRUCTURE
 ================================================================================
 
-No-Write-Allocate Policy:
--------------------------
-On a write miss, the data is written ONLY to main memory.
-The cache line is NOT filled with the new data.
+5.1 Direct-Mapped Cache Line
+----------------------------
 
-Why use No-Write-Allocate?
-- Simpler implementation
-- Avoids unnecessary memory reads
-- Good for write-once data patterns
+Each of the 32 sets contains:
 
-When a WRITE request arrives and it's a MISS:
+    ┌───────┬───────┬────────────┬───────────────────────────────────────────┐
+    │ VALID │ DIRTY │    TAG     │                  DATA BLOCK               │
+    │ 1 bit │ 1 bit │  22 bits   │                 256 bits                  │
+    └───────┴───────┴────────────┴───────────────────────────────────────────┘
+                                 │                                           │
+                                 │ Word7│Word6│Word5│Word4│Word3│Word2│Word1│Word0│
+                                 │[255:224]│...│...│...│...│...│...│[31:0]│
 
-Step 1: Address arrives (req_addr = 0x88, req_wdata = 0xBB)
-        - Decompose: tag=8, index=2, offset=0
+VALID: 1 = line contains valid data, 0 = empty or stale
+DIRTY: 1 = data modified but not written to memory, 0 = clean
+TAG: Identifies which memory block is cached here
+DATA: 32 bytes = 8 words of 32 bits each
 
-Step 2: Check cache line 2
-        - valid_arr[2] = 0? (assume empty) → MISS!
-        - Or tag doesn't match → MISS!
+5.2 2-Way Set-Associative Cache Line
+------------------------------------
 
-Step 3: Write directly to memory (NO cache update)
-        - Set mem_we = 1
-        - Set mem_addr = 0x88
-        - Set mem_wdata = 0xBB
-        - Cache remains unchanged!
+Each of the 16 sets contains TWO ways plus an LRU bit:
 
-Step 4: Complete
-        - Set resp_valid = 1
-        - Set hit = 0
-        - miss_count++
+    ┌───────────────────────────────────────────────────────────────────────────┐
+    │                               SET N                                        │
+    ├───────────────────────────────────┬───────────────────────────────────┬───┤
+    │              WAY 0                │              WAY 1                │LRU│
+    ├───────┬───────┬──────┬────────────┼───────┬───────┬──────┬────────────┼───┤
+    │ VALID │ DIRTY │ TAG  │    DATA    │ VALID │ DIRTY │ TAG  │    DATA    │bit│
+    │ 1 bit │ 1 bit │23bit │  256 bits  │ 1 bit │ 1 bit │23bit │  256 bits  │ 1 │
+    └───────┴───────┴──────┴────────────┴───────┴───────┴──────┴────────────┴───┘
 
-Timing: 2 clock cycles
-
-Note: A subsequent READ to 0x88 will also MISS because the cache
-was not allocated. This read will trigger a refill and bring
-the data into cache.
-
-================================================================================
-10. FSM STATES AND TRANSITIONS
-================================================================================
-
-State Encoding:
----------------
-    IDLE      = 0  : Waiting for request, handle hits immediately
-    MISS_RD0  = 1  : Request byte 0 from memory
-    MISS_RD1  = 2  : Capture byte 0, request byte 1
-    MISS_RD2  = 3  : Capture byte 1, request byte 2
-    MISS_RD3  = 4  : Capture byte 2, request byte 3
-    RESP      = 5  : Capture byte 3, update cache, respond
-    WRITE_MEM = 6  : Perform write-through to memory
-
-State Transition Diagram:
--------------------------
-
-                    ┌──────────────────────┐
-                    │        IDLE          │◄──────────────────┐
-                    │  (Wait for request)  │                   │
-                    └──────────┬───────────┘                   │
-                               │                               │
-            ┌──────────────────┼──────────────────┐            │
-            │ req_valid &&     │ req_valid &&     │            │
-            │ !req_rw &&       │ req_rw           │            │
-            │ !cache_hit       │ (any write)      │            │
-            ▼                  ▼                  │            │
-    ┌───────────────┐  ┌───────────────┐         │            │
-    │   MISS_RD0    │  │   WRITE_MEM   │─────────┼────────────┤
-    │ (Req byte 0)  │  │ (Write-thru)  │         │            │
-    └───────┬───────┘  └───────────────┘         │            │
-            │                                     │            │
-            ▼                                     │            │
-    ┌───────────────┐                            │            │
-    │   MISS_RD1    │                            │            │
-    │ (Req byte 1)  │                            │            │
-    └───────┬───────┘                            │            │
-            │                                     │            │
-            ▼                                     │            │
-    ┌───────────────┐                            │            │
-    │   MISS_RD2    │                            │            │
-    │ (Req byte 2)  │                            │            │
-    └───────┬───────┘                            │            │
-            │                                     │            │
-            ▼                                     │            │
-    ┌───────────────┐                            │            │
-    │   MISS_RD3    │                            │            │
-    │ (Req byte 3)  │                            │            │
-    └───────┬───────┘                            │            │
-            │                                     │            │
-            ▼                                     │            │
-    ┌───────────────┐                            │            │
-    │     RESP      │────────────────────────────┘            │
-    │ (Update cache)│                                         │
-    └───────────────┘                                         │
-            │                                                  │
-            └──────────────────────────────────────────────────┘
-
-What Each State Does:
----------------------
-
-IDLE:
-- Accepts new requests
-- Performs tag comparison
-- READ HIT: Responds immediately (1 cycle)
-- READ MISS: Transitions to MISS_RD0
-- WRITE (hit or miss): Transitions to WRITE_MEM
-
-MISS_RD0:
-- Memory address set to block_base + 0
-- Waiting for memory read latency
-
-MISS_RD1:
-- Captures mem_rdata into refill_byte0
-- Memory address set to block_base + 1
-
-MISS_RD2:
-- Captures mem_rdata into refill_byte1
-- Memory address set to block_base + 2
-
-MISS_RD3:
-- Captures mem_rdata into refill_byte2
-- Memory address set to block_base + 3
-
-RESP:
-- Captures mem_rdata into refill_byte3
-- Assembles 32-bit block: {byte3, byte2, byte1, byte0}
-- Updates cache arrays (data, tag, valid)
-- Returns requested byte based on offset
-- Sets resp_valid = 1
-
-WRITE_MEM:
-- Asserts mem_we = 1
-- Writes req_wdata to mem_addr
-- If hit, cache was already updated in IDLE
-- Sets resp_valid = 1
+LRU bit meaning:
+- LRU = 0: Way 0 is Least Recently Used (will be evicted next)
+- LRU = 1: Way 1 is Least Recently Used (will be evicted next)
 
 ================================================================================
-11. BYTE STORAGE IN 32-BIT BLOCK
+6. READ HIT OPERATION (Step-by-Step)
 ================================================================================
 
-Block Organization:
--------------------
-The 32-bit data block stores 4 bytes in little-endian order:
+Scenario: CPU reads from address 0x0000_0104
 
-    data_arr[index] = { byte3,   byte2,   byte1,   byte0  }
-                      [31:24]  [23:16]  [15:8]   [7:0]
+Step 1: Address Decode
+        - Offset = 0x04 (byte 4 in block)
+        - Index = 8 (for DM) or 8 (for SA)
+        - Tag = 0x000000
 
-Memory Layout Example:
-----------------------
-If block base address is 0x10, the memory contains:
-    mem[0x10] = 0x10 → stored in byte0 → bits [7:0]
-    mem[0x11] = 0x11 → stored in byte1 → bits [15:8]
-    mem[0x12] = 0x12 → stored in byte2 → bits [23:16]
-    mem[0x13] = 0x13 → stored in byte3 → bits [31:24]
+Step 2: Cache Lookup
+        - Access Set 8
+        - Compare stored tag with address tag
 
-    data_arr = 32'h13_12_11_10
+Step 3: Hit Detection
+        DM:  valid[8] AND (tag[8] == 0x000000) → TRUE
+        SA:  (valid0[8] AND (tag0[8] == 0x000000)) OR
+             (valid1[8] AND (tag1[8] == 0x000000)) → TRUE
 
-Offset Selection:
+Step 4: Data Extraction
+        - Block contains 32 bytes
+        - Offset 0x04 means Word 1 (offset[4:2] = 1)
+        - Return data[8][63:32]
+
+Step 5: Response
+        - cpu_rdata = extracted word
+        - cpu_resp = 1
+        - hit = 1
+
+Step 6: LRU Update (SA only)
+        - If hit in Way 0: LRU[8] = 1 (Way 1 becomes LRU)
+        - If hit in Way 1: LRU[8] = 0 (Way 0 becomes LRU)
+
+Timing: ~2 clock cycles (IDLE → COMPARE → HIT → RESP)
+
+================================================================================
+7. READ MISS OPERATION (Step-by-Step)
+================================================================================
+
+Scenario: CPU reads from address 0x0000_0500 (not in cache)
+
+Step 1: Address Decode
+        - Offset = 0x00
+        - Index = 8 (maps to Set 8)
+        - Tag = 0x000001
+
+Step 2: Cache Lookup
+        - Access Set 8
+        - Compare stored tag with address tag → NO MATCH
+
+Step 3: Miss Detection
+        - cache_hit = FALSE
+        - Need to evict current line and fetch new block
+
+Step 4: Victim Selection
+        DM:  Victim is always Set 8 (no choice)
+        SA:  Victim is way indicated by LRU[8]
+
+Step 5: Check Dirty Bit
+        - IF dirty_arr[victim] == 1:
+          - Need to write back victim block to memory first
+          - GOTO Step 6a (Writeback)
+        - ELSE:
+          - GOTO Step 6b (Allocate)
+
+Step 6a: Writeback (if victim is dirty)
+        - Reconstruct victim address: {old_tag, index, 5'b00000}
+        - mem_req = 1, mem_rw = 1 (write)
+        - mem_addr = victim_address
+        - mem_wdata = victim_block (256 bits)
+        - Wait for mem_resp
+
+Step 6b: Allocate (fetch new block)
+        - Block address = {req_addr[31:5], 5'b00000}
+        - mem_req = 1, mem_rw = 0 (read)
+        - mem_addr = block_address
+        - Wait for mem_resp
+
+Step 7: Update Cache
+        - valid[index] = 1
+        - dirty[index] = 0 (just fetched, clean)
+        - tag[index] = new_tag
+        - data[index] = mem_rdata (256 bits)
+
+Step 8: Response
+        - Extract requested word from fetched block
+        - cpu_rdata = word
+        - cpu_resp = 1
+
+Timing: 
+- Clean miss: ~8 cycles (includes memory latency)
+- Dirty miss: ~14 cycles (writeback + fetch)
+
+================================================================================
+8. WRITE HIT OPERATION (Write-Back Policy)
+================================================================================
+
+Scenario: CPU writes 0xDEADBEEF to address 0x0000_0104 (already in cache)
+
+Step 1: Address Decode
+        - Same as read
+
+Step 2: Cache Lookup
+        - Hit detected
+
+Step 3: Data Update
+        - Get current block from cache
+        - Modify word at offset with byte strobes
+        - Store updated block back to cache array
+
+Step 4: Dirty Bit Set
+        - dirty[index] = 1
+        - This marks the block as modified
+
+Step 5: Response
+        - cpu_resp = 1
+        - hit = 1
+
+IMPORTANT: Memory is NOT updated on write hit!
+The modified data stays only in cache until eviction.
+This is the essence of "Write-Back" policy.
+
+Timing: ~2 clock cycles
+
+================================================================================
+9. WRITE MISS OPERATION (Write-Allocate Policy)
+================================================================================
+
+Scenario: CPU writes 0xCAFEBABE to address 0x0000_0800 (not in cache)
+
+Step 1: Address Decode & Miss Detection
+        - Same as read miss
+
+Step 2: Victim Selection & Writeback (if dirty)
+        - Same as read miss
+
+Step 3: Allocate (fetch block from memory)
+        - Fetch the 32-byte block containing 0x800
+        - Even though we're writing, we need the OTHER bytes in the block
+
+Step 4: Modify Block
+        - Take fetched block
+        - Update the specific word with write data
+        - Apply byte strobes for partial writes
+
+Step 5: Store in Cache
+        - valid[index] = 1
+        - dirty[index] = 1  ← DIFFERENT FROM READ MISS!
+        - tag[index] = new_tag
+        - data[index] = modified_block
+
+Step 6: Response
+        - cpu_resp = 1
+        - hit = 0 (it was a miss)
+
+IMPORTANT: Write-Allocate means we ALWAYS fetch the block first,
+then modify it in cache. This contrasts with "No-Write-Allocate"
+where we'd write directly to memory without caching.
+
+Why Write-Allocate?
+- Exploits spatial locality for writes
+- If you write to one byte, you'll likely write to nearby bytes soon
+- Commonly paired with Write-Back policy
+
+================================================================================
+10. LRU REPLACEMENT MECHANISM (2-Way Only)
+================================================================================
+
+The LRU (Least Recently Used) algorithm evicts the block that was
+accessed longest ago.
+
+For 2-way set-associative, only 1 bit per set is needed:
+
+    LRU[set] = 0: Way 0 is LRU (evict Way 0 on miss)
+    LRU[set] = 1: Way 1 is LRU (evict Way 1 on miss)
+
+LRU Update Rules:
 -----------------
-    offset = 0 (addr[1:0] = 00) → return bits [7:0]   = byte0
-    offset = 1 (addr[1:0] = 01) → return bits [15:8]  = byte1
-    offset = 2 (addr[1:0] = 10) → return bits [23:16] = byte2
-    offset = 3 (addr[1:0] = 11) → return bits [31:24] = byte3
+After ANY access (read or write) to a way:
+    Access Way 0 → LRU[set] = 1 (Way 1 becomes LRU)
+    Access Way 1 → LRU[set] = 0 (Way 0 becomes LRU)
+
+Example Sequence:
+-----------------
+Initial: Set 5 is empty, LRU[5] = 0
+
+1. Read 0x0A0 → Miss, allocate to Way 0 (LRU says Way 0)
+   LRU[5] = 1 (Way 1 is now LRU)
+
+2. Read 0x2A0 → Miss, allocate to Way 1 (LRU says Way 1)
+   LRU[5] = 0 (Way 0 is now LRU)
+
+3. Read 0x0A0 → Hit in Way 0
+   LRU[5] = 1 (Way 1 is now LRU)
+
+4. Read 0x4A0 → Miss, evict Way 1 (LRU says Way 1)
+   0x2A0 is evicted, 0x4A0 takes its place
+   LRU[5] = 0 (Way 0 is now LRU)
+
+5. Read 0x2A0 → Miss! (was evicted in step 4)
+
+================================================================================
+11. FSM STATE DESCRIPTIONS
+================================================================================
+
+┌────────────────┬───────────────────────────────────────────────────────────┐
+│ State          │ Description                                                │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_IDLE         │ Waiting for CPU request. cpu_ready = 1.                    │
+│                │ On cpu_req: latch address/data, transition to COMPARE.     │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_COMPARE      │ Perform tag comparison. Determine hit or miss.             │
+│                │ For SA: also determine which way (hit or victim).          │
+│                │ Transition: HIT if match, MISS_CHECK if no match.          │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_HIT          │ Handle cache hit.                                          │
+│                │ Read: extract word from block.                             │
+│                │ Write: update block and set dirty bit.                     │
+│                │ Update LRU (SA only). Transition to RESP.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_MISS_CHECK   │ Determine if victim block is dirty.                        │
+│                │ Dirty: transition to WRITEBACK_INIT.                       │
+│                │ Clean: transition to ALLOCATE_INIT.                        │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_WRITEBACK_   │ Start writeback to memory.                                 │
+│ INIT           │ Wait for mem_ready, then assert mem_req with write.        │
+│                │ Transition to WRITEBACK.                                   │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_WRITEBACK    │ Wait for memory write to complete.                         │
+│                │ On mem_resp: transition to ALLOCATE_INIT.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_ALLOCATE_    │ Start fetching new block from memory.                      │
+│ INIT           │ Wait for mem_ready, then assert mem_req with read.         │
+│                │ Transition to ALLOCATE.                                    │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_ALLOCATE     │ Wait for memory read to complete.                          │
+│                │ On mem_resp: transition to UPDATE.                         │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_UPDATE       │ Update cache arrays with new block.                        │
+│                │ Set valid = 1, tag = new_tag.                              │
+│                │ For write: modify block and set dirty = 1.                 │
+│                │ For read: set dirty = 0.                                   │
+│                │ Update LRU (SA only). Transition to RESP.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_RESP         │ Send response to CPU.                                      │
+│                │ cpu_resp = 1, cpu_ready = 1.                               │
+│                │ Transition to IDLE.                                        │
+└────────────────┴───────────────────────────────────────────────────────────┘
+
+================================================================================
+12. TIMING DIAGRAMS
+================================================================================
+
+12.1 Read Hit Timing
+--------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                     
+cpu_req:  ______|‾‾‾|______________
+                                     
+   state: IDLE  |CMP|HIT|RSP|IDLE
+                                     
+cpu_resp: _______________|‾‾‾|_____
+                                     
+ cpu_rdy: ‾‾‾‾‾‾|___|‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+
+Total: ~3 clock cycles
+
+12.2 Read Miss (Clean Victim) Timing
+------------------------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                                     
+cpu_req:  ______|‾‾‾|________________________________
+                                                     
+   state: IDLE|CMP|MCK|AIN|ALLOC...|UPD|RSP|IDLE
+                                                     
+ mem_req: _________|‾‾‾|_____________________________
+                                                     
+mem_resp: _____________________|‾‾‾|_________________
+                                                     
+cpu_resp: _____________________________|‾‾‾|_________
+
+Total: ~8 clock cycles (includes 2-cycle memory latency)
+
+12.3 Read Miss (Dirty Victim) Timing
+------------------------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                                                 
+cpu_req:  ______|‾‾‾|____________________________________________
+                                                                 
+   state: IDLE|CMP|MCK|WBI|WB...|AIN|ALLOC...|UPD|RSP|IDLE
+                                                                 
+ mem_req: _________|‾‾‾|_____|‾‾‾|_______________________________
+ (write)           ^^^^       (read)
+                                                                 
+mem_resp: _______________|‾‾‾|___________|‾‾‾|___________________
+                                                                 
+cpu_resp: _________________________________________|‾‾‾|_________
+
+Total: ~14 clock cycles (writeback + fetch)
+
+================================================================================
+13. WORD EXTRACTION FROM BLOCK
+================================================================================
+
+The 32-byte (256-bit) block stores 8 words:
+
+    Block = [Word7][Word6][Word5][Word4][Word3][Word2][Word1][Word0]
+            [255:224][223:192][191:160][159:128][127:96][95:64][63:32][31:0]
+
+Word selection is done using offset bits [4:2]:
+
+    Offset[4:2] = 0 (000) → Word0 = block[31:0]
+    Offset[4:2] = 1 (001) → Word1 = block[63:32]
+    Offset[4:2] = 2 (010) → Word2 = block[95:64]
+    Offset[4:2] = 3 (011) → Word3 = block[127:96]
+    Offset[4:2] = 4 (100) → Word4 = block[159:128]
+    Offset[4:2] = 5 (101) → Word5 = block[191:160]
+    Offset[4:2] = 6 (110) → Word6 = block[223:192]
+    Offset[4:2] = 7 (111) → Word7 = block[255:224]
 
 Verilog Implementation:
 -----------------------
-    // Get byte from block
-    case (offset)
-        2'b00: byte_out = data_arr[index][7:0];
-        2'b01: byte_out = data_arr[index][15:8];
-        2'b10: byte_out = data_arr[index][23:16];
-        2'b11: byte_out = data_arr[index][31:24];
-    endcase
-
-    // Set byte in block
-    case (offset)
-        2'b00: data_arr[index][7:0]   = byte_in;
-        2'b01: data_arr[index][15:8]  = byte_in;
-        2'b10: data_arr[index][23:16] = byte_in;
-        2'b11: data_arr[index][31:24] = byte_in;
-    endcase
-
-================================================================================
-12. LIMITATIONS OF THIS MVP DESIGN
-================================================================================
-
-1. Single Outstanding Request:
-   - Only one request can be processed at a time
-   - No pipelining or request queuing
-   - Testbench must wait for resp_valid before next request
-
-2. No Replacement Policy Needed:
-   - Direct-mapped = each address has exactly one location
-   - No choice in what to evict (forced replacement)
-   - Set-associative caches need LRU, FIFO, etc.
-
-3. No Dirty Bit:
-   - Write-through means memory is always up-to-date
-   - Write-back caches need dirty bits to track modified lines
-   - Simplifies design but increases memory traffic
-
-4. No Write Buffering:
-   - Writes wait for memory to complete
-   - Write buffers could hide memory latency
-   - Current design is simpler but slower for writes
-
-5. Fixed Block Size:
-   - 4 bytes per block is small
-   - Real caches typically use 32-64 bytes
-   - Larger blocks exploit spatial locality better
-
-6. No Prefetching:
-   - Only fetches data on demand
-   - Prefetching could improve hit rate
-   - Would add complexity
-
-7. Fixed Memory Latency:
-   - Assumes 1-cycle memory read latency
-   - Real systems have variable latency
-   - No handling for wait states
-
-8. No Multi-Core Support:
-   - No cache coherency protocol
-   - Single CPU/single cache design
-   - MESI, MOESI protocols needed for multi-core
+function [31:0] get_word;
+    input [255:0] block;
+    input [2:0] word_sel;  // offset[4:2]
+    begin
+        case (word_sel)
+            3'd0: get_word = block[31:0];
+            3'd1: get_word = block[63:32];
+            3'd2: get_word = block[95:64];
+            3'd3: get_word = block[127:96];
+            3'd4: get_word = block[159:128];
+            3'd5: get_word = block[191:160];
+            3'd6: get_word = block[223:192];
+            3'd7: get_word = block[255:224];
+        endcase
+    end
+endfunction
 
 ================================================================================
-13. HOW TO RUN SIMULATION
+14. BYTE STROBES FOR PARTIAL WRITES
+================================================================================
+
+The cpu_wstrb signal enables byte-level writes:
+
+    cpu_wstrb[3:0] = Byte enable for each byte in the 32-bit word
+    
+    wstrb = 4'b0001 → Write byte 0 only (bits [7:0])
+    wstrb = 4'b0010 → Write byte 1 only (bits [15:8])
+    wstrb = 4'b0100 → Write byte 2 only (bits [23:16])
+    wstrb = 4'b1000 → Write byte 3 only (bits [31:24])
+    wstrb = 4'b1111 → Write all 4 bytes (full word)
+    wstrb = 4'b0011 → Write bytes 0 and 1 (halfword)
+
+Merge Logic:
+-----------
+For each byte position:
+    new_byte = wstrb[i] ? cpu_wdata[i*8+7:i*8] : old_data[i*8+7:i*8]
+
+Example:
+- Old word: 0x12345678
+- Write data: 0xFFFFFFFF
+- Strobe: 4'b0001
+- Result: 0x123456FF (only byte 0 changed)
+
+================================================================================
+15. WHY SINGLE-LEVEL CACHE?
+================================================================================
+
+This project implements a SINGLE-LEVEL cache for these reasons:
+
+1. ACADEMIC CLARITY
+   - Multi-level caches (L1/L2/L3) add layers of complexity
+   - Understanding one level thoroughly is prerequisite
+   - Easier to trace and debug
+
+2. CONCEPTS FOCUS
+   - All key concepts present: hit/miss, write policies, replacement
+   - Adding levels doesn't add new concepts, just complexity
+   - Same principles apply to each level
+
+3. VERIFICATION SIMPLICITY
+   - Waveforms are cleaner to analyze
+   - State machine is traceable
+   - Test cases are more intuitive
+
+4. RESOURCE EFFICIENCY
+   - Simpler for FPGA/ASIC implementation
+   - Lower simulation time
+   - Fits academic timeframe
+
+Real-World Context:
+------------------
+Modern CPUs use 3+ cache levels:
+- L1: ~32KB, ~4 cycles, split I-cache/D-cache
+- L2: ~256KB, ~12 cycles, unified
+- L3: ~8MB, ~40 cycles, shared among cores
+
+The techniques in this project apply to ALL levels.
+
+================================================================================
+16. HOW TO RUN SIMULATION
 ================================================================================
 
 Prerequisites:
 --------------
 - Icarus Verilog (iverilog) installed
-- GTKWave (optional, for waveform viewing)
+- GTKWave (optional, for waveforms)
 
 Installing Icarus Verilog on Windows:
 -------------------------------------
 1. Download from: http://bleyer.org/icarus/
 2. IMPORTANT: Install to a path WITHOUT SPACES!
-   - WRONG: C:\Program Files\iverilog  (contains spaces - will NOT work!)
+   - WRONG: C:\Program Files\iverilog  (will NOT work!)
    - CORRECT: C:\iverilog
-3. During installation, check "Add executable folder to PATH"
-4. Restart your terminal/PowerShell after installation
-5. Verify installation: iverilog -v
+3. Add C:\iverilog\bin to your PATH environment variable
+4. Restart terminal after installation
+5. Verify: iverilog -v
 
 Using Makefile:
 ---------------
-    # Compile and run
-    make run
-    
-    # Clean generated files
-    make clean
+    # Compile and run simulation
+    make sim
     
     # View waveforms (requires GTKWave)
     make wave
+    
+    # Run Direct-Mapped cache
+    make sim_dm
+    
+    # Run Set-Associative cache (default)
+    make sim_sa
+    
+    # Clean generated files
+    make clean
 
 Manual Commands:
 ----------------
-    # Step 1: Compile all Verilog files
-    iverilog -g2012 -o sim tb/tb_cache.v rtl/top.v rtl/cache_direct_mapped.v rtl/main_memory.v
-
-    # Step 2: Run simulation
+    # Compile (Set-Associative)
+    iverilog -g2012 -I rtl -o sim tb/tb_cache_system.v rtl/cache_top.v \
+             rtl/set_associative_cache.v rtl/direct_mapped_cache.v rtl/main_memory.v
+    
+    # Run
     vvp sim
+    
+    # View waveforms
+    gtkwave cache_system.vcd
 
-    # Step 3: View waveforms (optional)
-    gtkwave cache_sim.vcd
+Switching Cache Types:
+----------------------
+Edit rtl/cache_top.v and change the define:
 
-File Structure:
----------------
-    ADLD_EL/
-    ├── rtl/
-    │   ├── main_memory.v         # 256x8 byte-addressable memory
-    │   ├── cache_direct_mapped.v # Cache controller with FSM
-    │   └── top.v                 # Top-level interconnect
-    ├── tb/
-    │   └── tb_cache.v            # Self-checking testbench
-    ├── info.txt                  # This documentation file
-    └── Makefile                  # Build automation
+    `define CACHE_TYPE_DM    // For Direct-Mapped
+    `define CACHE_TYPE_SA    // For 2-Way Set-Associative (default)
 
 ================================================================================
-14. EXPECTED CONSOLE OUTPUT
+17. EXPECTED OUTPUT AND WAVEFORM BEHAVIOR
 ================================================================================
 
-When you run the simulation, you should see output similar to:
-
-------------------------------------------------------------
+Console Output Pattern:
+-----------------------
 ============================================================
-Direct-Mapped Cache Testbench
+Cache Memory System - Comprehensive Testbench
+============================================================
+Cache Type: 2-WAY SET-ASSOCIATIVE
+  Sets: 16, Ways: 2, Block Size: 32 bytes
 ============================================================
 
---- Initial State After Reset ---
-Hit Count: 0, Miss Count: 0
+--- Reset Complete ---
 
 ============================================================
 TEST A: Compulsory Miss then Hit (Same Block)
 ============================================================
 
-A.1: Read 0x12 - Expect MISS (compulsory)
-[READ]  Addr=0x12, Data=0x12, Hit=0, Time=...
+A.1: Read 0x100 - Expect MISS (compulsory)
+[READ]  Addr=0x00000100, Data=0x00000100, Hit=0, State=9, Time=...
 
-A.2: Read 0x13 - Expect HIT (same block as 0x12)
-[READ]  Addr=0x13, Data=0x13, Hit=1, Time=...
+A.2: Read 0x104 - Expect HIT (same block)
+[READ]  Addr=0x00000104, Data=0x00000104, Hit=1, State=9, Time=...
 
-A.3: Read 0x10 - Expect HIT (same block)
-[READ]  Addr=0x10, Data=0x10, Hit=1, Time=...
-
-A.4: Read 0x11 - Expect HIT (same block)
-[READ]  Addr=0x11, Data=0x11, Hit=1, Time=...
-
-After Test A - Hit Count: 3, Miss Count: 1
-
-============================================================
-TEST B: Conflict Miss (Same Index, Different Tag)
-============================================================
-... (conflict misses demonstrated)
-
-============================================================
-TEST C: Write-Through Hit
-============================================================
-... (write-through behavior verified)
-
-============================================================
-TEST D: Write Miss (No-Write-Allocate)
-============================================================
-... (no-write-allocate behavior verified)
+... (more tests) ...
 
 ============================================================
 FINAL RESULTS
 ============================================================
-Total Hit Count:  X
-Total Miss Count: Y
-Hit Rate: Z%
+Total Hits:   XX
+Total Misses: YY
+Hit Rate:     ZZ%
 ------------------------------------------------------------
 *** ALL TESTS PASSED ***
-============================================================
-Simulation Complete at time ...
-============================================================
-------------------------------------------------------------
 
-Key Observations:
------------------
-1. First access to any block is ALWAYS a miss (compulsory miss)
-2. Subsequent accesses to same block are hits (spatial locality)
-3. Accessing different tag with same index causes conflict miss
-4. Write-through updates both cache and memory
-5. Write miss doesn't allocate cache line (verified by subsequent read miss)
-
-================================================================================
-15. SIGNAL INTERFACE SUMMARY
-================================================================================
-
-CPU-Side Interface:
--------------------
-    Input:
-        clk         : System clock
-        rst         : Synchronous reset (active high)
-        req_valid   : Request valid signal
-        req_rw      : 0=Read, 1=Write
-        req_addr    : 8-bit address
-        req_wdata   : 8-bit write data
-    
-    Output:
-        resp_valid  : Response valid (transaction complete)
-        resp_rdata  : 8-bit read data
-        hit         : 1=Cache hit, 0=Cache miss
-        ready       : 1=Ready to accept request
-        hit_count   : 32-bit hit counter
-        miss_count  : 32-bit miss counter
-
-Memory-Side Interface:
+Waveform Observations:
 ----------------------
-    Output (to memory):
-        mem_we      : Memory write enable
-        mem_addr    : 8-bit memory address
-        mem_wdata   : 8-bit memory write data
-    
-    Input (from memory):
-        mem_rdata   : 8-bit memory read data
+1. COMPULSORY MISS:
+   - dbg_miss pulses HIGH
+   - State goes: IDLE → COMPARE → MISS_CHECK → ALLOCATE_INIT → 
+                 ALLOCATE → UPDATE → RESP → IDLE
+   - mem_req pulses during ALLOCATE_INIT
 
-Handshake Protocol:
--------------------
-    1. Wait for ready = 1
-    2. Assert req_valid = 1 with req_addr, req_rw, req_wdata
-    3. Deassert req_valid on next clock
-    4. Wait for resp_valid = 1
-    5. Capture resp_rdata and hit
-    6. Transaction complete
+2. HIT:
+   - dbg_hit pulses HIGH
+   - State goes: IDLE → COMPARE → HIT → RESP → IDLE
+   - Much shorter than miss!
+
+3. DIRTY WRITEBACK:
+   - dbg_writeback pulses HIGH
+   - State includes: WRITEBACK_INIT → WRITEBACK
+   - Two memory transactions visible (write then read)
+
+4. LRU UPDATE (SA):
+   - dbg_lru toggles after each access
+   - dbg_selected_way shows which way was accessed
 
 ================================================================================
-16. GLOSSARY OF TERMS
+18. COMMON VIVA QUESTIONS
 ================================================================================
 
-Block/Line: A unit of data transfer between cache and memory. In this design,
-            each block contains 4 bytes.
+Q1: What is a cache hit?
+A: When the requested data is found in the cache. Valid bit is 1 AND tag matches.
 
-Cache Hit: When requested data is found in the cache. Fast access path.
+Q2: What is a cache miss?
+A: When the requested data is NOT in the cache. Either invalid or tag mismatch.
 
-Cache Miss: When requested data is NOT in the cache. Requires memory access.
+Q3: What are the three types of cache misses?
+A: 
+- COMPULSORY: First access to a block (unavoidable)
+- CAPACITY: Cache is too small to hold all needed blocks
+- CONFLICT: Two blocks map to same set (DM and low-associativity)
 
-Compulsory Miss: First access to a block is always a miss (cold start miss).
+Q4: Explain write-back vs write-through.
+A: 
+- Write-Through: Write to both cache AND memory on every write
+- Write-Back: Write only to cache, update memory on eviction
+  Write-Back is faster but requires dirty bits.
 
-Conflict Miss: Miss caused by two addresses mapping to the same cache line
-               (only possible in direct-mapped or set-associative caches).
+Q5: What is the purpose of the dirty bit?
+A: Indicates if cached data differs from memory. On eviction, dirty blocks 
+   must be written back to memory to prevent data loss.
 
-Direct-Mapped: Cache organization where each memory address maps to exactly
-               one cache location based on the index bits.
+Q6: Why use write-allocate with write-back?
+A: They work well together. Write-allocate brings the block into cache,
+   then write-back keeps it there without immediate memory writes.
+   This exploits both temporal and spatial locality for writes.
 
-Index: Address bits that select which cache line to access.
+Q7: How does LRU work in 2-way cache?
+A: With 2 ways, LRU needs only 1 bit per set. The bit indicates which 
+   way was accessed LESS recently. On miss, evict the LRU way.
 
-No-Write-Allocate: Policy where write misses don't load data into cache.
+Q8: Why is direct-mapped faster than set-associative?
+A: Only one tag comparison needed vs. two (or more) in parallel.
+   No LRU logic required. Simpler control logic.
 
-Offset: Address bits that select which byte within a cache block.
+Q9: Why does set-associative have better hit rate?
+A: Reduces conflict misses. Two addresses with same index can now 
+   coexist in different ways.
 
-Tag: Address bits stored in cache to identify which memory block is cached.
+Q10: What happens on a dirty read miss?
+A: Three main steps:
+    1. Write dirty victim block to memory (writeback)
+    2. Fetch new block from memory (allocate)
+    3. Return requested word to CPU
 
-Valid Bit: Flag indicating whether a cache line contains valid data.
+================================================================================
+19. DESIGN LIMITATIONS
+================================================================================
 
-Write-Allocate: Policy where write misses cause a block to be loaded first.
+1. Single Outstanding Request
+   - Only one request processed at a time
+   - No pipelining
+   - Real caches support multiple outstanding requests
 
-Write-Back: Policy where writes only update cache; memory updated on eviction.
+2. No Prefetching
+   - Only fetches data on demand
+   - Real caches prefetch likely-needed blocks
 
-Write-Through: Policy where writes update both cache and memory immediately.
+3. Simple LRU
+   - True LRU for higher associativity requires more bits
+   - Real caches use pseudo-LRU or tree-based LRU
+
+4. Fixed Block Size
+   - 32 bytes is relatively small
+   - Modern caches use 64-128 bytes
+
+5. No Critical Word First
+   - Fetches entire block before responding
+   - Real caches return requested word first, then fill rest
+
+6. No Sub-blocking
+   - Entire block is valid or invalid
+   - Some caches have per-word valid bits
+
+================================================================================
+20. GLOSSARY
+================================================================================
+
+Block/Line: Unit of data transfer between cache and memory (32 bytes here)
+Cache Hit: Requested data found in cache
+Cache Miss: Requested data not in cache
+Compulsory Miss: First access to a block (cold start miss)
+Conflict Miss: Miss due to multiple addresses mapping to same set
+Dirty Bit: Indicates cached data differs from memory
+Direct-Mapped: Each address maps to exactly one cache line
+Index: Address bits selecting the cache set
+LRU: Least Recently Used replacement policy
+Offset: Address bits selecting byte within block
+Set: A row in the cache (may contain multiple ways)
+Set-Associative: Each address can map to one of N ways in a set
+Tag: Address bits stored in cache for identification
+Valid Bit: Indicates cache line contains valid data
+Way: A column in a set-associative cache
+Write-Allocate: On write miss, fetch block then modify
+Write-Back: Update only cache on write, memory on eviction
+Write-Through: Update both cache and memory on write
 
 ================================================================================
 END OF DOCUMENTATION
