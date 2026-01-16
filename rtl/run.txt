@@ -1,0 +1,3 @@
+iverilog -g2012 -I rtl -DCACHE_TYPE_DM -o sim_dm tb/tb_cache_system.v rtl/cache_top.v rtl/set_associative_cache.v rtl/direct_mapped_cache.v rtl/main_memory.v; vvp sim_dm
+
+gtkwave cache_system.vcd

@@ -14,7 +14,7 @@
 `define CACHE_SIZE      1024
 
 // Block size: 32 bytes = 256 bits
-`define BLOCK_SIZE      32
+`define BLOCK_SIZE      32 //bytes
 `define BLOCK_BITS      256
 
 // Words per block (assuming 32-bit words)
@@ -79,9 +79,6 @@
 `define S_UPDATE            4'd8   // Update cache arrays
 `define S_RESP              4'd9   // Send response to CPU
 
-//------------------------------------------------------------------------------
-// Memory Interface Timing
-//------------------------------------------------------------------------------
 // Memory latency in cycles (simulated)
 `define MEM_LATENCY     2
 

@@ -115,6 +115,8 @@ module tb_cache_system;
             cpu_req   <= 1'b1;
             cpu_rw    <= 1'b0;
             cpu_addr  <= addr;
+// For reads, wdata and wstrb are don't care
+
             cpu_wdata <= 32'd0;
             cpu_wstrb <= 4'b0000;
             

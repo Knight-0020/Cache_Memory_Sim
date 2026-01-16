@@ -1,0 +1,157 @@
+
+┌────────────────┬───────────────────────────────────────────────────────────┐
+│ State          │ Description                                                │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_IDLE         │ Waiting for CPU request. cpu_ready = 1.                    │
+│                │ On cpu_req: latch address/data, transition to COMPARE.     │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_COMPARE      │ Perform tag comparison. Determine hit or miss.             │
+│                │ For SA: also determine which way (hit or victim).          │
+│                │ Transition: HIT if match, MISS_CHECK if no match.          │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_HIT          │ Handle cache hit.                                          │
+│                │ Read: extract word from block.                             │
+│                │ Write: update block and set dirty bit.                     │
+│                │ Update LRU (SA only). Transition to RESP.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_MISS_CHECK   │ Determine if victim block is dirty.                        │
+│                │ Dirty: transition to WRITEBACK_INIT.                       │
+│                │ Clean: transition to ALLOCATE_INIT.                        │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_WRITEBACK_   │ Start writeback to memory.                                 │
+│ INIT           │ Wait for mem_ready, then assert mem_req with write.        │
+│                │ Transition to WRITEBACK.                                   │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_WRITEBACK    │ Wait for memory write to complete.                         │
+│                │ On mem_resp: transition to ALLOCATE_INIT.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_ALLOCATE_    │ Start fetching new block from memory.                      │
+│ INIT           │ Wait for mem_ready, then assert mem_req with read.         │
+│                │ Transition to ALLOCATE.                                    │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_ALLOCATE     │ Wait for memory read to complete.                          │
+│                │ On mem_resp: transition to UPDATE.                         │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_UPDATE       │ Update cache arrays with new block.                        │
+│                │ Set valid = 1, tag = new_tag.                              │
+│                │ For write: modify block and set dirty = 1.                 │
+│                │ For read: set dirty = 0.                                   │
+│                │ Update LRU (SA only). Transition to RESP.                  │
+├────────────────┼───────────────────────────────────────────────────────────┤
+│ S_RESP         │ Send response to CPU.                                      │
+│                │ cpu_resp = 1, cpu_ready = 1.                               │
+│                │ Transition to IDLE.                                        │
+└────────────────┴───────────────────────────────────────────────────────────┘
+
+================================================================================
+ TIMING DIAGRAMS
+================================================================================
+
+12.1 Read Hit Timing
+--------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                     
+cpu_req:  ______|‾‾‾|______________
+                                     
+   state: IDLE  |CMP|HIT|RSP|IDLE
+                                     
+cpu_resp: _______________|‾‾‾|_____
+                                     
+ cpu_rdy: ‾‾‾‾‾‾|___|‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+
+Total: ~3 clock cycles
+
+12.2 Read Miss (Clean Victim) Timing
+------------------------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                                     
+cpu_req:  ______|‾‾‾|________________________________
+                                                     
+   state: IDLE|CMP|MCK|AIN|ALLOC...|UPD|RSP|IDLE
+                                                     
+ mem_req: _________|‾‾‾|_____________________________
+                                                     
+mem_resp: _____________________|‾‾‾|_________________
+                                                     
+cpu_resp: _____________________________|‾‾‾|_________
+
+Total: ~8 clock cycles (includes 2-cycle memory latency)
+
+12.3 Read Miss (Dirty Victim) Timing
+------------------------------------
+
+     clk: _|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_|‾|_
+                                                                 
+cpu_req:  ______|‾‾‾|____________________________________________
+                                                                 
+   state: IDLE|CMP|MCK|WBI|WB...|AIN|ALLOC...|UPD|RSP|IDLE
+                                                                 
+ mem_req: _________|‾‾‾|_____|‾‾‾|_______________________________
+ (write)           ^^^^       (read)
+                                                                 
+mem_resp: _______________|‾‾‾|___________|‾‾‾|___________________
+                                                                 
+cpu_resp: _________________________________________|‾‾‾|_________
+
+Total: ~14 clock cycles (writeback + fetch)
+
+
+
+Test Set Summary
+Test	Description	Operations
+A	Compulsory Miss then Hit	4 reads
+        getting fresh word from MM
+
+B	Conflict Miss	5 reads
+        Show LRU
+
+C	Write Hit (Write-Back)	5 ops (reads + writes)
+        use cache and do read write
+
+D	Dirty Eviction with Writeback	3 reads
+        LRU writeback with dirty block
+
+E	Write Miss (Write-Allocate)	3 ops
+        get block from MM and write
+
+F	LRU Replacement	6 reads
+        LRU replacement check
+
+
+
+                    ┌─────────┐
+                    │  IDLE   │◄──────────────────────┐
+                    └────┬────┘                       │
+                         │ CPU Request               │
+                         ▼                           │
+                    ┌─────────┐                      │
+                    │ COMPARE │                      │
+                    └────┬────┘                      │
+                   HIT? │                            │
+              ┌────YES──┴──NO────┐                   │
+              ▼                  ▼                   │
+         ┌────────┐        ┌───────────┐            │
+         │  HIT   │        │MISS_CHECK │            │
+         └────┬───┘        └─────┬─────┘            │
+              │            Dirty?│                   │
+              │         ┌──YES───┴───NO──┐          │
+              │         ▼                ▼          │
+              │   ┌──────────┐    ┌──────────────┐  │
+              │   │WRITEBACK │    │ALLOCATE_INIT │  │
+              │   │  _INIT   │    └───────┬──────┘  │
+              │   └────┬─────┘            │         │
+              │        ▼                  ▼         │
+              │   ┌──────────┐    ┌──────────┐      │
+              │   │WRITEBACK │───►│ ALLOCATE │      │
+              │   └──────────┘    └────┬─────┘      │
+              │                        ▼           │
+              │                  ┌──────────┐      │
+              │                  │  UPDATE  │      │
+              │                  └────┬─────┘      │
+              │                       │            │
+              ▼                       ▼            │
+         ┌─────────────────────────────────┐       │
+         │              RESP               │───────┘
+         └─────────────────────────────────┘

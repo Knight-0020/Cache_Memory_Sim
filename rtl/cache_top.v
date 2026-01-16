@@ -8,8 +8,8 @@
 `include "cache_pkg.v"
 
 // Define cache type: uncomment one of these
-// `define CACHE_TYPE_DM    // Direct-Mapped Cache
-`define CACHE_TYPE_SA    // 2-Way Set-Associative Cache
+`define CACHE_TYPE_DM    // Direct-Mapped Cache
+// `define CACHE_TYPE_SA    // 2-Way Set-Associative Cache
 
 module cache_top (
     input  wire                         clk,
