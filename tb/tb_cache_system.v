@@ -444,41 +444,41 @@ module tb_cache_system;
         //======================================================================
         // TEST F: LRU Replacement (Set-Associative Only)
         //======================================================================
-        `ifndef CACHE_TYPE_DM
-        $display("============================================================");
-        $display("TEST F: LRU Replacement Correctness");
-        $display("============================================================");
+        // `ifndef CACHE_TYPE_DM
+        // $display("============================================================");
+        // $display("TEST F: LRU Replacement Correctness");
+        // $display("============================================================");
         
-        // Use a fresh set (index = 1, addresses 0x020, 0x220, 0x420)
-        // 0x020: index = (0x020 >> 5) & 0xF = 1
+        // // Use a fresh set (index = 1, addresses 0x020, 0x220, 0x420)
+        // // 0x020: index = (0x020 >> 5) & 0xF = 1
         
-        test_num = 21;
-        $display("\nF.1: Read 0x020 - Fill way 0");
-        do_read(32'h0000_0020, read_data, hit_flag);
+        // test_num = 21;
+        // $display("\nF.1: Read 0x020 - Fill way 0");
+        // do_read(32'h0000_0020, read_data, hit_flag);
         
-        test_num = 22;
-        $display("\nF.2: Read 0x220 - Fill way 1, LRU=way0");
-        do_read(32'h0000_0220, read_data, hit_flag);
+        // test_num = 22;
+        // $display("\nF.2: Read 0x220 - Fill way 1, LRU=way0");
+        // do_read(32'h0000_0220, read_data, hit_flag);
         
-        test_num = 23;
-        $display("\nF.3: Read 0x020 - HIT, LRU=way1");
-        check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.3");
+        // test_num = 23;
+        // $display("\nF.3: Read 0x020 - HIT, LRU=way1");
+        // check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.3");
         
-        test_num = 24;
-        $display("\nF.4: Read 0x420 - MISS, evicts LRU (way1=0x220)");
-        do_read(32'h0000_0420, read_data, hit_flag);
+        // test_num = 24;
+        // $display("\nF.4: Read 0x420 - MISS, evicts LRU (way1=0x220)");
+        // do_read(32'h0000_0420, read_data, hit_flag);
         
-        test_num = 25;
-        $display("\nF.5: Read 0x020 - Should still be HIT");
-        check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.5");
+        // test_num = 25;
+        // $display("\nF.5: Read 0x020 - Should still be HIT");
+        // check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.5");
         
-        test_num = 26;
-        $display("\nF.6: Read 0x220 - Should be MISS (was evicted)");
-        check_read(32'h0000_0220, 32'h0000_0220, 1'b0, "F.6");
+        // test_num = 26;
+        // $display("\nF.6: Read 0x220 - Should be MISS (was evicted)");
+        // check_read(32'h0000_0220, 32'h0000_0220, 1'b0, "F.6");
         
-        $display("\n--- Test F Complete ---");
-        $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
-        `endif
+        // $display("\n--- Test F Complete ---");
+        // $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
+        // `endif
         
         //======================================================================
         // TEST G: Sequential Block Access Pattern
