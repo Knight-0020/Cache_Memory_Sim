@@ -1,7 +1,6 @@
 #===============================================================================
-# Makefile for Single-Level Cache Memory System
+# Makefile for Cache Memory System (Direct-Mapped Only)
 # Compatible with Icarus Verilog (iverilog)
-# Supports both Direct-Mapped and 2-Way Set-Associative configurations
 #===============================================================================
 
 # Compiler and simulator
@@ -23,7 +22,6 @@ TB_DIR = tb
 # Source files
 RTL_FILES = $(RTL_DIR)/cache_top.v \
             $(RTL_DIR)/direct_mapped_cache.v \
-            $(RTL_DIR)/set_associative_cache.v \
             $(RTL_DIR)/main_memory.v
 
 TB_FILES = $(TB_DIR)/tb_cache_system.v
@@ -36,15 +34,15 @@ ALL_FILES = $(TB_FILES) $(RTL_FILES)
 # Main Targets
 #===============================================================================
 
-# Default target: compile and run (Set-Associative)
+# Default target: compile and run
 .PHONY: all
 all: sim
 
-# Compile and run simulation (Set-Associative cache by default)
+# Compile and run simulation
 .PHONY: sim
 sim: $(SIM_OUT)
 	@echo "=============================================="
-	@echo "Running Cache Simulation (Set-Associative)"
+	@echo "Running Cache Simulation (Direct-Mapped Only)"
 	@echo "=============================================="
 	$(VVP) $(SIM_OUT)
 
@@ -54,25 +52,6 @@ compile: $(SIM_OUT)
 
 $(SIM_OUT): $(ALL_FILES) $(PKG_FILE)
 	$(IVERILOG) $(IVFLAGS) -o $(SIM_OUT) $(ALL_FILES)
-
-#===============================================================================
-# Cache Type Specific Targets
-#===============================================================================
-
-# Run with Direct-Mapped cache
-.PHONY: sim_dm
-sim_dm:
-	@echo "=============================================="
-	@echo "Running Cache Simulation (Direct-Mapped)"
-	@echo "=============================================="
-	@echo "Note: Edit rtl/cache_top.v to enable CACHE_TYPE_DM"
-	$(IVERILOG) $(IVFLAGS) -DCACHE_TYPE_DM -o sim_dm $(ALL_FILES)
-	$(VVP) sim_dm
-
-# Run with Set-Associative cache
-.PHONY: sim_sa
-sim_sa: sim
-	@echo "Running Set-Associative cache..."
 
 #===============================================================================
 # Waveform Viewing
@@ -109,9 +88,7 @@ help:
 	@echo "=============================================="
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make sim      - Compile and run (Set-Associative, default)"
-	@echo "  make sim_dm   - Compile and run (Direct-Mapped)"
-	@echo "  make sim_sa   - Compile and run (Set-Associative)"
+	@echo "  make sim      - Compile and run"
 	@echo "  make compile  - Compile only"
 	@echo "  make wave     - View waveforms in GTKWave"
 	@echo "  make clean    - Remove generated files"
@@ -122,9 +99,6 @@ help:
 	@echo "  vvp sim"
 	@echo "  gtkwave cache_system.vcd"
 	@echo ""
-	@echo "To switch cache types, edit rtl/cache_top.v:"
-	@echo "  \`define CACHE_TYPE_DM   // Direct-Mapped"
-	@echo "  \`define CACHE_TYPE_SA   // Set-Associative (default)"
 
 # Check syntax only
 .PHONY: check
@@ -145,4 +119,4 @@ list:
 .PHONY: sim_win
 sim_win:
 	@echo Running on Windows...
-	powershell -Command "$$env:PATH = 'C:\\iverilog\\bin;' + $$env:PATH; iverilog -g2012 -I rtl -o sim tb/tb_cache_system.v rtl/cache_top.v rtl/set_associative_cache.v rtl/direct_mapped_cache.v rtl/main_memory.v; vvp sim"
+	powershell -Command "$$env:PATH = 'C:\\iverilog\\bin;' + $$env:PATH; iverilog -g2012 -I rtl -o sim tb/tb_cache_system.v rtl/cache_top.v rtl/direct_mapped_cache.v rtl/main_memory.v; vvp sim"

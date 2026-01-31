@@ -44,26 +44,6 @@
 // Tag:    addr[31:10]
 
 //------------------------------------------------------------------------------
-// 2-Way Set-Associative Cache Parameters
-//------------------------------------------------------------------------------
-// Number of sets: 32 / 2 = 16 sets
-`define SA_NUM_SETS     16
-
-// Ways per set
-`define SA_NUM_WAYS     2
-
-// Index bits: log2(16) = 4
-`define SA_INDEX_WIDTH  4
-
-// Tag bits: 32 - 4 - 5 = 23
-`define SA_TAG_WIDTH    23
-
-// Address field positions for Set-Associative
-// Offset: addr[4:0]
-// Index:  addr[8:5]
-// Tag:    addr[31:9]
-
-//------------------------------------------------------------------------------
 // FSM State Encoding
 //------------------------------------------------------------------------------
 `define STATE_WIDTH     4
@@ -81,13 +61,6 @@
 
 // Memory latency in cycles (simulated)
 `define MEM_LATENCY     2
-
-//------------------------------------------------------------------------------
-// Cache Type Selection
-//------------------------------------------------------------------------------
-// Define one of these in your top module or makefile:
-// `define CACHE_TYPE_DM       // Direct-Mapped
-// `define CACHE_TYPE_SA       // Set-Associative
 
 //------------------------------------------------------------------------------
 // Helper Macros

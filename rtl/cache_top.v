@@ -7,9 +7,7 @@
 
 `include "cache_pkg.v"
 
-// Define cache type: uncomment one of these
-`define CACHE_TYPE_DM    // Direct-Mapped Cache
-// `define CACHE_TYPE_SA    // 2-Way Set-Associative Cache
+// Direct-Mapped Cache Only implementation
 
 module cache_top (
     input  wire                         clk,
@@ -58,12 +56,10 @@ module cache_top (
     //--------------------------------------------------------------------------
     // Cache Instance Selection
     //--------------------------------------------------------------------------
-`ifdef CACHE_TYPE_DM
+    //--------------------------------------------------------------------------
+    // Cache Instance Selection
+    //--------------------------------------------------------------------------
     // Direct-Mapped Cache
-    wire dbg_valid_dm;
-    wire dbg_dirty_dm;
-    wire dbg_tag_match_dm;
-    
     direct_mapped_cache u_cache (
         .clk            (clk),
         .rst            (rst),
@@ -97,50 +93,13 @@ module cache_top (
         .dbg_writeback  (dbg_writeback)
     );
     
-    // Map DM debug to 2-bit outputs (replicate for compatibility)
-    assign dbg_valid       = {dbg_valid_dm, dbg_valid_dm};
-    assign dbg_dirty       = {dbg_dirty_dm, dbg_dirty_dm};
-    assign dbg_tag_match   = {dbg_tag_match_dm, dbg_tag_match_dm};
-    assign dbg_lru         = 1'b0;  // N/A for DM
-    assign dbg_selected_way = 1'b0; // N/A for DM
-
-`else  // CACHE_TYPE_SA (default)
-    // 2-Way Set-Associative Cache
-    set_associative_cache u_cache (
-        .clk            (clk),
-        .rst            (rst),
-        
-        // CPU Interface
-        .cpu_req        (cpu_req),
-        .cpu_rw         (cpu_rw),
-        .cpu_addr       (cpu_addr),
-        .cpu_wdata      (cpu_wdata),
-        .cpu_wstrb      (cpu_wstrb),
-        .cpu_ready      (cpu_ready),
-        .cpu_resp       (cpu_resp),
-        .cpu_rdata      (cpu_rdata),
-        
-        // Memory Interface
-        .mem_req        (mem_req),
-        .mem_rw         (mem_rw),
-        .mem_addr       (mem_addr),
-        .mem_wdata      (mem_wdata),
-        .mem_ready      (mem_ready),
-        .mem_resp       (mem_resp),
-        .mem_rdata      (mem_rdata),
-        
-        // Debug
-        .dbg_hit        (dbg_hit),
-        .dbg_miss       (dbg_miss),
-        .dbg_state      (dbg_state),
-        .dbg_valid      (dbg_valid),
-        .dbg_dirty      (dbg_dirty),
-        .dbg_tag_match  (dbg_tag_match),
-        .dbg_lru        (dbg_lru),
-        .dbg_selected_way (dbg_selected_way),
-        .dbg_writeback  (dbg_writeback)
-    );
-`endif
+    // Map DM debug to 2-bit outputs (replicate for compatibility if needed, or simplify output)
+    // Simplified for Direct Mapped Only
+    assign dbg_valid       = {1'b0, dbg_valid_dm};
+    assign dbg_dirty       = {1'b0, dbg_dirty_dm};
+    assign dbg_tag_match   = {1'b0, dbg_tag_match_dm};
+    assign dbg_lru         = 1'b0;  
+    assign dbg_selected_way = 1'b0;
 
     //--------------------------------------------------------------------------
     // Main Memory Instance

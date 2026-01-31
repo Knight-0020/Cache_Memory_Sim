@@ -205,17 +205,11 @@ module tb_cache_system;
     //--------------------------------------------------------------------------
     // Main Test Sequence
     //--------------------------------------------------------------------------
-    initial begin
         $display("============================================================");
         $display("Cache Memory System - Comprehensive Testbench");
         $display("============================================================");
-        `ifdef CACHE_TYPE_DM
         $display("Cache Type: DIRECT-MAPPED");
         $display("  Sets: 32, Block Size: 32 bytes");
-        `else
-        $display("Cache Type: 2-WAY SET-ASSOCIATIVE");
-        $display("  Sets: 16, Ways: 2, Block Size: 32 bytes");
-        `endif
         $display("============================================================\n");
         
         // Initialize
@@ -273,7 +267,6 @@ module tb_cache_system;
         $display("TEST B: Conflict Miss");
         $display("============================================================");
         
-        `ifdef CACHE_TYPE_DM
         // Direct-Mapped: addr with same index causes immediate conflict
         // Index = addr[9:5], so addresses 0x400 and 0x100 have same index
         // 0x100: index = (0x100 >> 5) & 0x1F = 8
@@ -291,34 +284,6 @@ module tb_cache_system;
         test_num = 7;
         $display("\nB.3: Read 0x100 - Expect MISS (was evicted)");
         check_read(32'h0000_0100, 32'h0000_0100, 1'b0, "B.3");
-        
-        `else
-        // 2-Way Set-Associative: Need 3 addresses with same index to cause conflict
-        // Index = addr[8:5], so need addr % 512 to have same bits [8:5]
-        // 0x100: index = (0x100 >> 5) & 0xF = 8
-        // 0x300: index = (0x300 >> 5) & 0xF = 8  (different tag, way 1)
-        // 0x500: index = (0x500 >> 5) & 0xF = 8  (causes eviction)
-        
-        test_num = 5;
-        $display("\nB.1: Read 0x100 - Expect HIT (already in cache)");
-        check_read(32'h0000_0100, 32'h0000_0100, 1'b1, "B.1");
-        
-        test_num = 6;
-        $display("\nB.2: Read 0x300 - Expect MISS (fills way 1)");
-        check_read(32'h0000_0300, 32'h0000_0300, 1'b0, "B.2");
-        
-        test_num = 7;
-        $display("\nB.3: Read 0x100 - Expect HIT (still in way 0)");
-        check_read(32'h0000_0100, 32'h0000_0100, 1'b1, "B.3");
-        
-        test_num = 8;
-        $display("\nB.4: Read 0x500 - Expect MISS (evicts LRU way)");
-        check_read(32'h0000_0500, 32'h0000_0500, 1'b0, "B.4");
-        
-        test_num = 9;
-        $display("\nB.5: Read 0x300 - Expect MISS (was LRU, evicted)");
-        check_read(32'h0000_0300, 32'h0000_0300, 1'b0, "B.5");
-        `endif
         
         $display("\n--- Test B Complete ---");
         $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
@@ -373,7 +338,6 @@ module tb_cache_system;
         // Write to establish dirty block at 0x200 (already dirty from Test C)
         // Force eviction by accessing conflicting address
         
-        `ifdef CACHE_TYPE_DM
         // 0x200: index = (0x200 >> 5) & 0x1F = 0x10
         // 0x600: same index, different tag
         
@@ -385,29 +349,6 @@ module tb_cache_system;
         test_num = 16;
         $display("\nD.2: Read 0x200 - Miss, reload - should have persisted value");
         check_read(32'h0000_0200, 32'hDEAD_BEEF, 1'b0, "D.2");
-        
-        `else
-        // 2-Way: Need to fill both ways and trigger eviction
-        // 0x200 is dirty in one way
-        // Access another address with same index to fill second way
-        // Then access third address to evict
-        
-        // 0x200: index = (0x200 >> 5) & 0xF = 0
-        // 0x400: same index
-        // 0x600: same index - will evict LRU (0x200 is dirty)
-        
-        test_num = 15;
-        $display("\nD.1: Read 0x400 - Fill second way");
-        do_read(32'h0000_0400, read_data, hit_flag);
-        
-        test_num = 16;
-        $display("\nD.2: Read 0x600 - Evict LRU (dirty writeback expected)");
-        do_read(32'h0000_0600, read_data, hit_flag);
-        
-        test_num = 17;
-        $display("\nD.3: Read 0x200 - Miss, reload - should have persisted value");
-        check_read(32'h0000_0200, 32'hDEAD_BEEF, 1'b0, "D.3");
-        `endif
         
         $display("\n--- Test D Complete ---");
         $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
@@ -441,44 +382,8 @@ module tb_cache_system;
         $display("\n--- Test E Complete ---");
         $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
         
-        //======================================================================
-        // TEST F: LRU Replacement (Set-Associative Only)
-        //======================================================================
-        // `ifndef CACHE_TYPE_DM
-        // $display("============================================================");
-        // $display("TEST F: LRU Replacement Correctness");
-        // $display("============================================================");
-        
-        // // Use a fresh set (index = 1, addresses 0x020, 0x220, 0x420)
-        // // 0x020: index = (0x020 >> 5) & 0xF = 1
-        
-        // test_num = 21;
-        // $display("\nF.1: Read 0x020 - Fill way 0");
-        // do_read(32'h0000_0020, read_data, hit_flag);
-        
-        // test_num = 22;
-        // $display("\nF.2: Read 0x220 - Fill way 1, LRU=way0");
-        // do_read(32'h0000_0220, read_data, hit_flag);
-        
-        // test_num = 23;
-        // $display("\nF.3: Read 0x020 - HIT, LRU=way1");
-        // check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.3");
-        
-        // test_num = 24;
-        // $display("\nF.4: Read 0x420 - MISS, evicts LRU (way1=0x220)");
-        // do_read(32'h0000_0420, read_data, hit_flag);
-        
-        // test_num = 25;
-        // $display("\nF.5: Read 0x020 - Should still be HIT");
-        // check_read(32'h0000_0020, 32'h0000_0020, 1'b1, "F.5");
-        
-        // test_num = 26;
-        // $display("\nF.6: Read 0x220 - Should be MISS (was evicted)");
-        // check_read(32'h0000_0220, 32'h0000_0220, 1'b0, "F.6");
-        
-        // $display("\n--- Test F Complete ---");
-        // $display("Hits: %0d, Misses: %0d\n", total_hits, total_misses);
-        // `endif
+        // Test F (LRU Replacement) removed as it is specific to SA cache
+
         
         //======================================================================
         // TEST G: Sequential Block Access Pattern

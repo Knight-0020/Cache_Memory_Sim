@@ -1,3 +1,70 @@
-iverilog -g2012 -I rtl -DCACHE_TYPE_DM -o sim_dm tb/tb_cache_system.v rtl/cache_top.v rtl/set_associative_cache.v rtl/direct_mapped_cache.v rtl/main_memory.v; vvp sim_dm
+# Run Instructions
 
+This project requires **Icarus Verilog** for simulation and **GTKWave** for waveform viewing.
+
+## 🛠️ Step 1: Install Requirements
+
+### Windows
+1. Download **Icarus Verilog for Windows**: [http://bleyer.org/icarus/](http://bleyer.org/icarus/)
+   - During install, strictly check the box **"Add executable to your PATH environment variable"**.
+2. Download **GTKWave for Windows**: [http://gtkwave.sourceforge.net/](http://gtkwave.sourceforge.net/)
+   - Usually included with the Icarus installer above.
+
+### macOS (via Homebrew)
+```bash
+brew install icarus-verilog
+brew install gtkwave
+```
+
+### Linux (Ubuntu/Debian)
+```bash
+sudo apt-get update
+sudo apt-get install iverilog gtkwave
+```
+
+---
+
+## 🚀 Step 2: Run Simulation
+
+### Option A: Windows (PowerShell)
+Copy and paste this entire command block into PowerShell:
+
+```powershell
+# Temporarily add path just in case (adjust if you installed elsewhere)
+$env:PATH = 'C:\iverilog\bin;' + $env:PATH
+
+# Compile
+iverilog -g2012 -I rtl -o sim tb/tb_cache_system.v rtl/cache_top.v rtl/direct_mapped_cache.v rtl/main_memory.v
+
+# Run
+vvp sim
+```
+
+### Option B: Linux / macOS / Git Bash
+If you have `make` installed:
+```bash
+make sim
+```
+
+Or manually:
+```bash
+iverilog -g2012 -I rtl -o sim tb/tb_cache_system.v rtl/cache_top.v rtl/direct_mapped_cache.v rtl/main_memory.v
+vvp sim
+```
+
+---
+
+## 📈 Step 3: View Waveforms
+
+After running the simulation, a file named `cache_system.vcd` will be created.
+
+1. Open **GTKWave**.
+2. Go to **File > Open New Tab** (or Open).
+3. Select `cache_system.vcd`.
+4. In the "SST" panel, click on `tb_cache_system` -> `u_dut` to see the module signals.
+5. Drag signals like `clk`, `cpu_req`, `cpu_addr`, `dbg_state`, `dbg_hit`, `dbg_miss` to the "Signals" area.
+
+**Quick Command:**
+```bash
 gtkwave cache_system.vcd
+```
